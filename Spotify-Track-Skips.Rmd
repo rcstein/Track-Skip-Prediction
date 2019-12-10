@@ -1,0 +1,60 @@
+---
+title: "Spotify Song Skip Prediction"
+output: html_notebook
+---
+```{r}
+install.packages("e1071")
+install.packages("caret")
+library(tidyr)
+library(igraph)
+library(dplyr)
+library(e1071)
+library(caret)
+library(lubridate)
+play_data <- read.csv("~/Documents/MSDS/Data Mining/Data Mining Project/data 2/training_set/log_mini.csv", stringsAsFactors = FALSE)
+track_data <- read.csv("~/Documents/MSDS/Data Mining/Data Mining Project/data/track_features/tf_mini.csv")
+```
+
+```{r}
+combined_data <- full_join(play_data,track_data,by = c("track_id_clean" = "track_id"))
+# convert strings to booleans
+combined_data[combined_data == "true"] <- 1
+combined_data[combined_data == "false"] <- 0
+
+#convert categorical integers to factors for automated dummy-coding
+combined_data$context_type <- factor(combined_data$context_type)
+combined_data$hist_user_behavior_reason_start <- factor(combined_data$hist_user_behavior_reason_start)
+combined_data$hist_user_behavior_reason_end <- factor(combined_data$hist_user_behavior_reason_end)
+combined_data$key <- factor(combined_data$key)
+combined_data$time_signature <- factor(combined_data$time_signature)
+combined_data$mode <- factor(combined_data$mode)
+
+#convert dates to date-time datatypes 
+combined_data$date <- ymd(combined_data$date)
+combined_data$date <- update(combined_data$date, hour = combined_data$hour_of_day)
+combined_data <- combined_data[-16]
+
+#standardize continuous numerical variables
+combined_data$skip_1 <- factor(combined_data$skip_1)
+combined_data$skip_2 <- factor(combined_data$skip_2)
+combined_data$skip_3 <- factor(combined_data$skip_3)
+combined_data$not_skipped <- factor(combined_data$not_skipped)
+combined_data$hist_user_behavior_is_shuffle <- factor(combined_data$hist_user_behavior_is_shuffle)
+combined_data$context_switch <- factor(combined_data$context_switch)
+combined_data$no_pause_before_play <- factor(combined_data$no_pause_before_play)
+combined_data$short_pause_before_play <- factor(combined_data$short_pause_before_play)
+combined_data$premium <- factor(combined_data$premium)
+combined_data <- combined_data[-12]
+combined_data <- rapply(combined_data,scale,c("numeric"),how="replace")
+str(combined_data)
+
+# separate out normalized play and track data; separate out response variable (skipped T/F)
+y <- combined_data$not_skipped
+
+```
+Question: how do we handle the session position / session lengths? Could represent with fraction, or track time elapsed in session vs. duration of song?
+
+```{r}
+naive_bayes <- naiveBayes(formula = not_skipped ~ context_switch + no_pause_before_play + short_pause_before_play + hist_user_behavior_is_shuffle + hist_user_behavior_reason_end + hist_user_behavior_reason_start + hist_user_behavior_n_seekfwd + hist_user_behavior_n_seekfwd + hour(date) + premium + context_type + duration + us_popularity_estimate + acousticness + beat_strength + danceability + dyn_range_mean + energy + flatness + instrumentalness + key + liveness + loudness + mechanism + mode + organism + speechiness + tempo + time_signature + valence )
+```
+
