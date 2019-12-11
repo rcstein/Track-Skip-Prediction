@@ -115,6 +115,36 @@ acc_mat_lasso = pred_tf_lasso == Y_test
 acc_lasso = sum(acc_mat_lasso)/length(acc_mat_lasso) * 100
 print(list(conf_mat=conf_mat_lasso,precision=precision_lasso,recall=recall_lasso,accuracy=acc_lasso,lambda=glm_lasso$lambda.min))
 ```
+```{r}
+N=100
+cutoff=numeric(N)
+prec1 = numeric(N)
+prec2 = numeric(N)
+rec1 = numeric(N)
+rec2 = numeric(N)
+acc =   numeric(N)
+j=1
+for(i in seq(from=0,to=1,length.out=N)){
+  
+  pred_tf_cut = preds_lasso>i
+  acc_frame_cut = tibble(pred=pred_tf_cut,true=Y_test)
+  conf_mat_cut = (acc_frame_cut %>% group_by(true,pred) %>% count())$n %>% matrix(ncol = 2,nrow=2)
+  precision_cut= c(conf_mat_cut[1,1]/sum(conf_mat_cut[,1]),conf_mat_cut[2,2]/sum(conf_mat_cut[,2]))
+  recall_cut = c(conf_mat_cut[1,1]/sum(conf_mat_cut[1,]),conf_mat_cut[2,2]/sum(conf_mat_cut[2,]))
+  acc_mat_cut = pred_tf_cut == Y_test
+  acc_cut = sum(acc_mat_cut)/length(acc_mat_cut) 
+  cutoff[j] = i
+  prec1[j] =precision_cut[1]
+  prec2[j] =precision_cut[2]
+  rec1[j] =recall_cut[1]
+  rec2[j] =recall_cut[2]
+  acc[j] = acc_cut
+  j = 1+j
+}
+cut_frame = tibble(cutoff=cutoff,prec1=prec1,prec2=prec2,rec1=rec1,rec2=rec2,acc=acc)
+ggplot(cut_frame,aes(x=cutoff)) + geom_point(aes(y=prec1,colour='red')) + geom_point(aes(y=prec2,colour='blue')) + geom_point(aes(y=rec1,colour='yellow')) + geom_point(aes(y=rec2,colour='green')) + geom_point(aes(y=acc,colour='black'))
+
+```
 
 ```{r}
 glm_ridge = cv.glmnet(X_train,Y_train,nfolds=10,alpha=0,family='binomial')
@@ -128,6 +158,60 @@ acc_mat_ridge = pred_tf_ridge == Y_test
 acc_ridge = sum(acc_mat_ridge)/length(acc_mat_ridge) * 100
 print(list(conf_mat=conf_mat_ridge,precision=precision_ridge,recall=recall_ridge,accuracy=acc_ridge,lambda=glm_ridge$lambda.min))
 ```
+
+
+```{r}
+naive_bayes <- naiveBayes(x=X_train,y=Y_train)
+preds_nb = predict(naive_bayes,newdata=as.data.frame(X_test))
+acc_frame_nb = tibble(pred=preds_nb,true=Y_test)
+conf_mat_nb = (acc_frame_nb %>% group_by(true,pred) %>% count())$n %>% matrix(ncol = 2,nrow=2)
+precision_nb= c(conf_mat_nb[1,1]/sum(conf_mat_nb[,1]),conf_mat_nb[2,2]/sum(conf_mat_nb[,2]))
+recall_nb = c(conf_mat_nb[1,1]/sum(conf_mat_nb[1,]),conf_mat_nb[2,2]/sum(conf_mat_nb[2,]))
+acc_mat_nb = preds_nb == Y_test
+acc_nb = sum(acc_mat_nb)/length(acc_mat_nb) * 100
+print(list(conf_mat=conf_mat_nb,precision=precision_nb,recall=recall_nb,accuracy=acc_nb))
+```
+```{r}
+library(MASS)
+lda = lda(x=X_train,grouping=Y_train)
+preds_lda = predict(lda,newdata=as.data.frame(X_test))
+pred_tf_lda = preds_lda$class
+acc_frame_lda = tibble(pred=pred_tf_lda,true=Y_test)
+conf_mat_lda = (acc_frame_lda %>% group_by(true,pred) %>% count())$n %>% matrix(ncol = 2,nrow=2)
+precision_lda= c(conf_mat_lda[1,1]/sum(conf_mat_lda[,1]),conf_mat_lda[2,2]/sum(conf_mat_lda[,2]))
+recall_lda = c(conf_mat_lda[1,1]/sum(conf_mat_lda[1,]),conf_mat_lda[2,2]/sum(conf_mat_lda[2,]))
+acc_mat_lda = pred_tf_lda == Y_test
+acc_lda = sum(acc_mat_lda)/length(acc_mat_lda) * 100
+print(list(conf_mat=conf_mat_lda,precision=precision_lda,recall=recall_lda,accuracy=acc_lda))
+```
+```{r}
+library(MASS)
+qda = qda(x=X_train,grouping=Y_train)
+preds_qda = predict(qda,newdata=as.data.frame(X_test))
+pred_tf_qda = preds_qda$class
+acc_frame_qda = tibble(pred=pred_tf_qda,true=Y_test)
+conf_mat_qda = (acc_frame_qda %>% group_by(true,pred) %>% count())$n %>% matrix(ncol = 2,nrow=2)
+precision_qda= c(conf_mat_qda[1,1]/sum(conf_mat_qda[,1]),conf_mat_qda[2,2]/sum(conf_mat_qda[,2]))
+recall_qda = c(conf_mat_qda[1,1]/sum(conf_mat_qda[1,]),conf_mat_qda[2,2]/sum(conf_mat_qda[2,]))
+acc_mat_qda = pred_tf_qda == Y_test
+acc_qda = sum(acc_mat_qda)/length(acc_mat_qda) * 100
+print(list(conf_mat=conf_mat_qda,precision=precision_qda,recall=recall_qda,accuracy=acc_qda))
+```
+
+```{r}
+km2 = kmeans(X_dum,centers = 2,iter.max = 30)
+preds_km = km2$cluster
+pred_tf_km = as.logical(preds_km-1)
+acc_frame_km = tibble(pred=pred_tf_km,true=Y)
+conf_mat_km = (acc_frame_km %>% group_by(true,pred) %>% count())$n %>% matrix(ncol = 2,nrow=2)
+precision_km= c(conf_mat_km[1,1]/sum(conf_mat_km[,1]),conf_mat_km[2,2]/sum(conf_mat_km[,2]))
+recall_km = c(conf_mat_km[1,1]/sum(conf_mat_km[1,]),conf_mat_km[2,2]/sum(conf_mat_km[2,]))
+acc_mat_km = pred_tf_km == Y
+acc_km = sum(acc_mat_km)/length(acc_mat_km) * 100
+print(list(conf_mat=conf_mat_km,precision=precision_km,recall=recall_km,accuracy=acc_km))
+```
+
+
 ```{r}
 preds_avg = (preds_lasso + preds_ridge)/2
 pred_tf_avg = preds_avg>.5
@@ -144,16 +228,3 @@ print(list(conf_mat=conf_mat_avg,precision=precision_avg,recall=recall_avg,accur
 #coef_ridge = coef.cv.glmnet(glm_ridge,s=c(glm_ridge$lambda.min))
 #coef_ridge
 ```
-
-```{r}
-naive_bayes <- naiveBayes(x=X_train,y=Y_train)
-preds_nb = predict(naive_bayes,newdata=as.data.frame(X_test))
-acc_frame_nb = tibble(pred=preds_nb,true=Y_test)
-conf_mat_nb = (acc_frame_nb %>% group_by(true,pred) %>% count())$n %>% matrix(ncol = 2,nrow=2)
-precision_nb= c(conf_mat_nb[1,1]/sum(conf_mat_nb[,1]),conf_mat_nb[2,2]/sum(conf_mat_nb[,2]))
-recall_nb = c(conf_mat_nb[1,1]/sum(conf_mat_nb[1,]),conf_mat_nb[2,2]/sum(conf_mat_nb[2,]))
-acc_mat_nb = preds_nb == Y_test
-acc_nb = sum(acc_mat_nb)/length(acc_mat_nb) * 100
-print(list(conf_mat=conf_mat_nb,precision=precision_nb,recall=recall_nb,accuracy=acc_nb))
-```
-
