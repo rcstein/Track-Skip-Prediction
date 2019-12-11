@@ -3,8 +3,6 @@ title: "Spotify Song Skip Prediction"
 output: html_notebook
 ---
 ```{r}
-install.packages("e1071")
-install.packages("caret")
 library(tidyr)
 library(igraph)
 library(dplyr)
@@ -14,38 +12,36 @@ library(lubridate)
 library(glmnet)
 play_data <- read.csv("data/training_set/log_mini.csv", stringsAsFactors = FALSE)
 track_data <- read.csv("data/track_features/tf_mini.csv")
+track_data$track_id = as.character(track_data$track_id)
 ```
 
 ```{r}
 combined_data <- full_join(play_data,track_data,by = c("track_id_clean" = "track_id"))
-# convert strings to booleans
 
-combined_data[combined_data == "true"] <- 1
-combined_data[combined_data == "false"] <- 0
 
 #convert categorical integers to factors for automated dummy-coding
-combined_data$context_type <- factor(combined_data$context_type)
-combined_data$hist_user_behavior_reason_start <- factor(combined_data$hist_user_behavior_reason_start)
-combined_data$hist_user_behavior_reason_end <- factor(combined_data$hist_user_behavior_reason_end)
-combined_data$key <- factor(combined_data$key)
+combined_data$context_type <- as.factor(combined_data$context_type)
+combined_data$hist_user_behavior_reason_start <- as.factor(combined_data$hist_user_behavior_reason_start)
+combined_data$hist_user_behavior_reason_end <- as.factor(combined_data$hist_user_behavior_reason_end)
+combined_data$key <- as.factor(combined_data$key)
 combined_data$time_signature <- factor(combined_data$time_signature)
 combined_data$mode <- factor(combined_data$mode)
 
-#convert dates to date-time datatypes 
-combined_data$date <- ymd(combined_data$date)
-combined_data$date <- update(combined_data$date, hour = combined_data$hour_of_day)
-combined_data <- combined_data[-16]
+#convert T/F values 
+combined_data$context_switch = as.logical(combined_data$context_switch)
+combined_data$skip_1 <- as.logical(combined_data$skip_1)
+combined_data$skip_2 <- as.logical(combined_data$skip_2)
+combined_data$skip_3 <- as.logical(combined_data$skip_3)
+combined_data$not_skipped <- as.logical(combined_data$not_skipped)
+combined_data$no_pause_before_play <- as.logical(combined_data$no_pause_before_play)
+combined_data$short_pause_before_play <- as.logical(combined_data$short_pause_before_play)
+combined_data$long_pause_before_play <- as.logical(combined_data$long_pause_before_play)
+combined_data$hist_user_behavior_n_seekfwd <- as.logical(combined_data$hist_user_behavior_n_seekfwd)
+combined_data$hist_user_behavior_n_seekback <- as.logical(combined_data$hist_user_behavior_n_seekback)
+combined_data$hist_user_behavior_is_shuffle <- as.logical(combined_data$hist_user_behavior_is_shuffle)
+combined_data$premium <- as.logical(combined_data$premium)
 
 #standardize continuous numerical variables
-combined_data$hist_user_behavior_is_shuffle <- factor(combined_data$hist_user_behavior_is_shuffle)
-combined_data$context_switch <- factor(combined_data$context_switch)
-combined_data$no_pause_before_play <- factor(combined_data$no_pause_before_play)
-combined_data$short_pause_before_play <- factor(combined_data$short_pause_before_play)
-combined_data$premium <- factor(combined_data$premium)
-combined_data <- combined_data[-12]
-combined_data <- rapply(combined_data,scale,c("numeric"),how="replace")
-str(combined_data)
-
 combined_data$place_in_session = combined_data$session_position / combined_data$session_length
 combined_data$place_in_day = combined_data$hour_of_day/24
 
@@ -64,29 +60,100 @@ weekday_to_int<- function(x){
 }
 
 weekday_to_int(combined_data$day_of_week[[1]])
-
 p_o_w1 = sapply(combined_data$day_of_week, weekday_to_int)
-
 combined_data$place_in_week = p_o_w1/7 + combined_data$hour_of_day / (7*24)
-
 combined_data$place_in_month = (combined_data$day-1) / dom + (combined_data$hour_of_day /(dom*24))
+combined_data$day_of_week = as.factor(combined_data$day_of_week)
 
+
+combined_data$since_release = combined_data$year -combined_data$release_year
 # separate out normalized play and track data; separate out response variable (skipped T/F)
-y <- combined_data$not_skipped
+combined_data$month = as.factor(combined_data$month)
+combined_data$day = as.integer(combined_data$day)
+combined_data$year = as.factor(combined_data$year)
 
+
+
+# convert strings to booleans
+combined_data <- rapply(combined_data,scale,c("numeric"),how="replace")
+str(combined_data)
 ```
 Question: how do we handle the session position / session lengths? Could represent with fraction, or track time elapsed in session vs. duration of song?
 
 ```{r}
-library(ggplot2)
-combined_data %>% group_by(context_switch,not_skipped)%>% count()
+X=subset(combined_data,select=-c(session_id,track_id_clean,date,year,skip_1,skip_2,skip_3,not_skipped))
 
-ggplot(combined_data,aes(x=place_in_week,y=not_skipped,colour=day_of_week)) + geom_point()
+cl = sapply(X, class)
+ps = sapply(cl, function(x){
+  return(ifelse(x=='factor'||x=='logical','-1',''))
+})
 
+f =  paste(colnames(X),ps,collapse = " + ")
+form = as.formula(paste(c('~ ',f),collapse = ''))
+
+X_dum = model.matrix(form,data=X)
+Y <- combined_data$not_skipped
+
+set.seed(10201998)
+test = sample(length(Y),(length(Y)%/%10))
+
+Y_test = Y[test]
+Y_train = Y[-test]
+X_test = X_dum[test,]
+X_train = X_dum[-test,]
 ```
 
+```{r}
+glm_lasso = cv.glmnet(X_train,Y_train,nfolds=10,alpha=1,family='binomial')
+preds_lasso = predict(glm_lasso,newx=X_test,s=c(glm_lasso$lambda.min),type='response')
+pred_tf_lasso = preds_lasso>.5
+acc_frame_lasso = tibble(pred=pred_tf_lasso,true=Y_test)
+conf_mat_lasso = (acc_frame_lasso %>% group_by(true,pred) %>% count())$n %>% matrix(ncol = 2,nrow=2)
+precision_lasso= c(conf_mat_lasso[1,1]/sum(conf_mat_lasso[,1]),conf_mat_lasso[2,2]/sum(conf_mat_lasso[,2]))
+recall_lasso = c(conf_mat_lasso[1,1]/sum(conf_mat_lasso[1,]),conf_mat_lasso[2,2]/sum(conf_mat_lasso[2,]))
+acc_mat_lasso = pred_tf_lasso == Y_test
+acc_lasso = sum(acc_mat_lasso)/length(acc_mat_lasso) * 100
+print(list(conf_mat=conf_mat_lasso,precision=precision_lasso,recall=recall_lasso,accuracy=acc_lasso,lambda=glm_lasso$lambda.min))
+```
 
 ```{r}
-naive_bayes <- naiveBayes(formula = not_skipped ~ context_switch + no_pause_before_play + short_pause_before_play + hist_user_behavior_is_shuffle + hist_user_behavior_reason_end + hist_user_behavior_reason_start + hist_user_behavior_n_seekfwd + hist_user_behavior_n_seekfwd + hour(date) + premium + context_type + duration + us_popularity_estimate + acousticness + beat_strength + danceability + dyn_range_mean + energy + flatness + instrumentalness + key + liveness + loudness + mechanism + mode + organism + speechiness + tempo + time_signature + valence )
+glm_ridge = cv.glmnet(X_train,Y_train,nfolds=10,alpha=0,family='binomial')
+preds_ridge = predict(glm_ridge,newx=X_test,s=c(glm_ridge$lambda.min),type='response')
+pred_tf_ridge = preds_ridge>.5
+acc_frame_ridge = tibble(pred=pred_tf_ridge,true=Y_test)
+conf_mat_ridge = (acc_frame_ridge %>% group_by(true,pred) %>% count())$n %>% matrix(ncol = 2,nrow=2)
+precision_ridge= c(conf_mat_ridge[1,1]/sum(conf_mat_ridge[,1]),conf_mat_ridge[2,2]/sum(conf_mat_ridge[,2]))
+recall_ridge = c(conf_mat_ridge[1,1]/sum(conf_mat_ridge[1,]),conf_mat_ridge[2,2]/sum(conf_mat_ridge[2,]))
+acc_mat_ridge = pred_tf_ridge == Y_test
+acc_ridge = sum(acc_mat_ridge)/length(acc_mat_ridge) * 100
+print(list(conf_mat=conf_mat_ridge,precision=precision_ridge,recall=recall_ridge,accuracy=acc_ridge,lambda=glm_ridge$lambda.min))
+```
+```{r}
+preds_avg = (preds_lasso + preds_ridge)/2
+pred_tf_avg = preds_avg>.5
+acc_frame_avg = tibble(pred=pred_tf_avg,true=Y_test)
+conf_mat_avg = (acc_frame_avg %>% group_by(true,pred) %>% count())$n %>% matrix(ncol = 2,nrow=2)
+precision_avg= c(conf_mat_avg[1,1]/sum(conf_mat_avg[,1]),conf_mat_avg[2,2]/sum(conf_mat_avg[,2]))
+recall_avg = c(conf_mat_avg[1,1]/sum(conf_mat_avg[1,]),conf_mat_avg[2,2]/sum(conf_mat_avg[2,]))
+acc_mat_avg = pred_tf_avg == Y_test
+acc_avg = sum(acc_mat_avg)/length(acc_mat_avg) * 100
+print(list(conf_mat=conf_mat_avg,precision=precision_avg,recall=recall_avg,accuracy=acc_avg))
+
+
+#coef_lasso = coef.cv.glmnet(glm_lasso,s=c(glm_lasso$lambda.min))
+#coef_ridge = coef.cv.glmnet(glm_ridge,s=c(glm_ridge$lambda.min))
+#coef_ridge
+```
+
+```{r}
+naive_bayes <- naiveBayes(x=X_train,y=Y_train)
+preds_nb = predict(naive_bayes,newdata=as.data.frame(X_test))
+acc_frame_nb = tibble(pred=preds_nb,true=Y_test)
+conf_mat_nb = (acc_frame_nb %>% group_by(true,pred) %>% count())$n %>% matrix(ncol = 2,nrow=2)
+precision_nb= c(conf_mat_nb[1,1]/sum(conf_mat_nb[,1]),conf_mat_nb[2,2]/sum(conf_mat_nb[,2]))
+recall_nb = c(conf_mat_nb[1,1]/sum(conf_mat_nb[1,]),conf_mat_nb[2,2]/sum(conf_mat_nb[2,]))
+acc_mat_nb = preds_nb == Y_test
+acc_nb = sum(acc_mat_nb)/length(acc_mat_nb) * 100
+print(list(conf_mat=conf_mat_nb,precision=precision_nb,recall=recall_nb,accuracy=acc_nb))
 ```
 
