@@ -1,20 +1,64 @@
 ---
-title: "Spotify Song Skip Prediction"
-output: html_notebook
+title: "An In-Depth Guide to catgeorization problems"
+output:
+  html_document:
+    df_print: paged
 ---
+Machine Learning can be a useful tool for many sorts of problems. One of the most common type of problem is categorization. This tutorial will give an in-depth approach to solving these types of problems. For the purpose of this tutorial we will be using the spotify sequential skip prediction data set which can be found here {https://www.crowdai.org/challenges/spotify-sequential-skip-prediction-challenge}
+
+##Data Loading and Cleaning pt. 1
+The first thing to do is to load the data which in this case can be done using the read.csv() function. You can then view the loaded data using View() and you can see the structure of the data using str().
 ```{r}
-library(tidyr)
-library(igraph)
-library(dplyr)
-library(e1071)
-library(caret)
-library(lubridate)
-library(glmnet)
-play_data <- read.csv("data/training_set/log_mini.csv", stringsAsFactors = FALSE)
-track_data <- read.csv("data/track_features/tf_mini.csv")
-track_data$track_id = as.character(track_data$track_id)
+#assuming the dcsv files are in your rstudio project folder
+data <- read.csv("log_mini.csv")
+View(data)
+str(data)
+```
+To keep this simple our goal will be to predict whether or not a song will be skipped. This information can be seen in the 'not_skipped' column. Now you might notice that this column contains the test words 'true' and 'false'. Unfortunately most if not all Machine learning tools cannot work with test inputs. Thus we need to convert this to a binary representation. This can be done pretty easily in R. (note:specific columns in a dataframe can be accessed with the $ operator followed by the name of the column)
+```{r}
+data$not_skipped = as.logical(data$not_skipped)
+```
+If you go back to the view of data you can now see that the 'not_skipped' column contains 'TRUE' and 'FALSE'. This may seem like text but under the hood R represents these as 0s and 1s. You'll probably also notice that there are a number of other columns with text 'true' and 'false values. You can go ahead and convert these as well.
+```{r}
+data$skip_1 = as.logical(data$skip_1)
+data$skip_2 = as.logical(data$skip_2)
+data$skip_3 = as.logical(data$skip_3)
+data$hist_user_behavior_is_shuffle = as.logical(data$hist_user_behavior_is_shuffle)
+data$premium = as.logical(data$premium)
+str(data)
 ```
 
+The as.logical function can also handle binary representations and while not always necessary, for the sake of consistency you can convert the binary columns to logical as well.
+```{r}
+data$context_switch = as.logical(data$context_switch)
+data$no_pause_before_play <- as.logical(data$no_pause_before_play)
+data$short_pause_before_play <- as.logical(data$short_pause_before_play)
+data$long_pause_before_play <- as.logical(data$long_pause_before_play)
+data$hist_user_behavior_n_seekfwd <- as.logical(data$hist_user_behavior_n_seekfwd)
+data$hist_user_behavior_n_seekback <- as.logical(data$hist_user_behavior_n_seekback)
+str(data)
+```
+## Logistic Regression
+
+Now that we have a bunch of numeric data we can start modeling! One of the most basic tools for this is logistic regression. 
+{https://en.wikipedia.org/wiki/Logistic_regression}
+`
+
+
+```{r}
+play_data <- read.csv("log_mini.csv")
+track_data <- read.csv("tf_mini.csv")
+track_data$track_id = as.character(track_data$track_id)
+```
+```{r}
+library(tidyr)
+library(dplyr)
+library(e1071)
+library(lubridate)
+library(glmnet)
+library(ggplot2)
+
+```
 ```{r}
 combined_data <- full_join(play_data,track_data,by = c("track_id_clean" = "track_id"))
 
@@ -114,36 +158,12 @@ recall_lasso = c(conf_mat_lasso[1,1]/sum(conf_mat_lasso[1,]),conf_mat_lasso[2,2]
 acc_mat_lasso = pred_tf_lasso == Y_test
 acc_lasso = sum(acc_mat_lasso)/length(acc_mat_lasso) * 100
 print(list(conf_mat=conf_mat_lasso,precision=precision_lasso,recall=recall_lasso,accuracy=acc_lasso,lambda=glm_lasso$lambda.min))
-```
-```{r}
-N=100
-cutoff=numeric(N)
-prec1 = numeric(N)
-prec2 = numeric(N)
-rec1 = numeric(N)
-rec2 = numeric(N)
-acc =   numeric(N)
-j=1
-for(i in seq(from=0,to=1,length.out=N)){
-  
-  pred_tf_cut = preds_lasso>i
-  acc_frame_cut = tibble(pred=pred_tf_cut,true=Y_test)
-  conf_mat_cut = (acc_frame_cut %>% group_by(true,pred) %>% count())$n %>% matrix(ncol = 2,nrow=2)
-  precision_cut= c(conf_mat_cut[1,1]/sum(conf_mat_cut[,1]),conf_mat_cut[2,2]/sum(conf_mat_cut[,2]))
-  recall_cut = c(conf_mat_cut[1,1]/sum(conf_mat_cut[1,]),conf_mat_cut[2,2]/sum(conf_mat_cut[2,]))
-  acc_mat_cut = pred_tf_cut == Y_test
-  acc_cut = sum(acc_mat_cut)/length(acc_mat_cut) 
-  cutoff[j] = i
-  prec1[j] =precision_cut[1]
-  prec2[j] =precision_cut[2]
-  rec1[j] =recall_cut[1]
-  rec2[j] =recall_cut[2]
-  acc[j] = acc_cut
-  j = 1+j
-}
-cut_frame = tibble(cutoff=cutoff,prec1=prec1,prec2=prec2,rec1=rec1,rec2=rec2,acc=acc)
-ggplot(cut_frame,aes(x=cutoff)) + geom_point(aes(y=prec1,colour='red')) + geom_point(aes(y=prec2,colour='blue')) + geom_point(aes(y=rec1,colour='yellow')) + geom_point(aes(y=rec2,colour='green')) + geom_point(aes(y=acc,colour='black'))
 
+
+lasso_roc = glmnet::roc.glmnet(glm_lasso,newy=Y_test,newx=X_test)
+ggplot(data = lasso_roc,aes(x=FPR,y=TPR)) + geom_point()
+asses_lasso = glmnet::assess.glmnet(glm_lasso,newy=Y_test,newx=X_test)
+auc_lasso = asses_lasso$auc
 ```
 
 ```{r}
@@ -157,6 +177,12 @@ recall_ridge = c(conf_mat_ridge[1,1]/sum(conf_mat_ridge[1,]),conf_mat_ridge[2,2]
 acc_mat_ridge = pred_tf_ridge == Y_test
 acc_ridge = sum(acc_mat_ridge)/length(acc_mat_ridge) * 100
 print(list(conf_mat=conf_mat_ridge,precision=precision_ridge,recall=recall_ridge,accuracy=acc_ridge,lambda=glm_ridge$lambda.min))
+
+ridge_roc = glmnet::roc.glmnet(glm_ridge,newy=Y_test,newx=X_test)
+ggplot(data = ridge_roc,aes(x=FPR,y=TPR)) + geom_point()
+asses_ridge = glmnet::assess.glmnet(glm_ridge,newy=Y_test,newx=X_test)
+asses_ridge$auc
+auc_ridge = asses_ridge$auc
 ```
 
 
@@ -173,6 +199,7 @@ print(list(conf_mat=conf_mat_nb,precision=precision_nb,recall=recall_nb,accuracy
 ```
 ```{r}
 library(MASS)
+library(ROCR)
 lda = lda(x=X_train,grouping=Y_train)
 preds_lda = predict(lda,newdata=as.data.frame(X_test))
 pred_tf_lda = preds_lda$class
@@ -183,9 +210,14 @@ recall_lda = c(conf_mat_lda[1,1]/sum(conf_mat_lda[1,]),conf_mat_lda[2,2]/sum(con
 acc_mat_lda = pred_tf_lda == Y_test
 acc_lda = sum(acc_mat_lda)/length(acc_mat_lda) * 100
 print(list(conf_mat=conf_mat_lda,precision=precision_lda,recall=recall_lda,accuracy=acc_lda))
+
+preds_lda$posterior[,2]
+
+rocr_lda = prediction(preds_lda$posterior[,2],Y_test)
+assess_lda = performance(rocr_lda,measure = 'auc')
+auc_lda = as.numeric(assess_lda@y.values[[1]])
 ```
 ```{r}
-library(MASS)
 qda = qda(x=X_train,grouping=Y_train)
 preds_qda = predict(qda,newdata=as.data.frame(X_test))
 pred_tf_qda = preds_qda$class
@@ -209,11 +241,21 @@ recall_km = c(conf_mat_km[1,1]/sum(conf_mat_km[1,]),conf_mat_km[2,2]/sum(conf_ma
 acc_mat_km = pred_tf_km == Y
 acc_km = sum(acc_mat_km)/length(acc_mat_km) * 100
 print(list(conf_mat=conf_mat_km,precision=precision_km,recall=recall_km,accuracy=acc_km))
+
 ```
 
 
 ```{r}
-preds_avg = (preds_lasso + preds_ridge)/2
+aucs = c(auc_lasso,auc_lda)
+aucs
+preds_avg = (preds_lasso*auc_lasso + preds_lda$posterior[,2]*auc_lda)/ sum(aucs)
+
+rocr_avg = prediction(preds_avg,Y_test)
+assess_avg = performance(rocr_avg,measure = 'auc')
+auc_avg = as.numeric(assess_avg@y.values[[1]])
+auc_avg
+
+
 pred_tf_avg = preds_avg>.5
 acc_frame_avg = tibble(pred=pred_tf_avg,true=Y_test)
 conf_mat_avg = (acc_frame_avg %>% group_by(true,pred) %>% count())$n %>% matrix(ncol = 2,nrow=2)
@@ -222,9 +264,5 @@ recall_avg = c(conf_mat_avg[1,1]/sum(conf_mat_avg[1,]),conf_mat_avg[2,2]/sum(con
 acc_mat_avg = pred_tf_avg == Y_test
 acc_avg = sum(acc_mat_avg)/length(acc_mat_avg) * 100
 print(list(conf_mat=conf_mat_avg,precision=precision_avg,recall=recall_avg,accuracy=acc_avg))
-
-
-#coef_lasso = coef.cv.glmnet(glm_lasso,s=c(glm_lasso$lambda.min))
-#coef_ridge = coef.cv.glmnet(glm_ridge,s=c(glm_ridge$lambda.min))
-#coef_ridge
 ```
+

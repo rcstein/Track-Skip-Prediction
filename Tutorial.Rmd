@@ -1,0 +1,130 @@
+---
+title: "An In Depth Guide To Categorization"
+author: "Rice Tyler"
+date: "12/11/2019"
+output: html_document
+---
+
+Machine Learning can be a useful tool for many sorts of problems. One of the most common type of problem is categorization. This tutorial will give an in-depth approach to solving these types of problems. For the purpose of this tutorial we will be using the spotify sequential skip prediction data set which can be found here {https://www.crowdai.org/challenges/spotify-sequential-skip-prediction-challenge}
+
+##Data Loading and Cleaning pt. 1
+The first thing to do is to load the data which in this case can be done using the read.csv() function. You can then view the loaded data using View() and you can see the structure of the data using str().
+```{r}
+#assuming the dcsv files are in your rstudio project folder
+data <- read.csv("log_mini.csv")
+str(data)
+```
+To keep this simple our goal will be to predict whether or not a song will be skipped. This information can be seen in the 'not_skipped' column. Now you might notice that this column contains the test words 'true' and 'false'. Unfortunately most if not all Machine learning tools cannot work with test inputs. Thus we need to convert this to a binary representation. This can be done pretty easily in R. (note:specific columns in a dataframe can be accessed with the $ operator followed by the name of the column)
+```{r}
+data$not_skipped = as.logical(data$not_skipped)
+str(data)
+```
+If you go back to the view of data you can now see that the 'not_skipped' column contains 'TRUE' and 'FALSE'. This may seem like text but under the hood R represents these as 0s and 1s. You'll probably also notice that there are a number of other columns with text 'true' and 'false values. You can go ahead and convert these as well.
+```{r}
+data$skip_1 = as.logical(data$skip_1)
+data$skip_2 = as.logical(data$skip_2)
+data$skip_3 = as.logical(data$skip_3)
+data$hist_user_behavior_is_shuffle = as.logical(data$hist_user_behavior_is_shuffle)
+data$premium = as.logical(data$premium)
+str(data)
+```
+
+The as.logical function can also handle binary representations and while not always necessary, for the sake of consistency you can convert the binary columns to logical as well.
+```{r}
+data$context_switch = as.logical(data$context_switch)
+data$no_pause_before_play <- as.logical(data$no_pause_before_play)
+data$short_pause_before_play <- as.logical(data$short_pause_before_play)
+data$long_pause_before_play <- as.logical(data$long_pause_before_play)
+data$hist_user_behavior_n_seekfwd <- as.logical(data$hist_user_behavior_n_seekfwd)
+data$hist_user_behavior_n_seekback <- as.logical(data$hist_user_behavior_n_seekback)
+str(data)
+```
+## Logistic Regression
+
+Now that we have a bunch of numeric data we can start modeling! One of the most basic tools for this is logistic regression. 
+{https://en.wikipedia.org/wiki/Logistic_regression}
+In R you can fit a logistic regression using the glm() function with the setting family=binomial(link=logit). You can use as many variables as you want to make predictions so we might as well use all the data we can. Because more information is always better, right? (This is actually very wrong but I will get into that later). So I will use all of the numeric data that we have (except for skip_1-3 because they are analogs for not_skipped). (Note: The formula paramter in the glm should be in the form (y ~ x1 + x2 +...)).
+
+```{r}
+glm = glm(not_skipped ~ session_position + session_length + context_switch + no_pause_before_play + 
+            short_pause_before_play + long_pause_before_play + hist_user_behavior_n_seekfwd +
+            hist_user_behavior_n_seekback + hist_user_behavior_is_shuffle + hour_of_day + premium ,family = binomial(),data = data)
+```
+Now that you have a model you want to test it, right? Well, The common practice to evaluate models is to split whatever data using you are using into train and test sets. So we'll re-run this model after splitting the data. You want generally want to maximize the amount of training data, but you also need a sufficient number of rows to test on. For this example we'll reserve 10% of the data for training.
+
+```{r}
+indx = sample(dim(data)[1],dim(data)[1]%/%10)
+test  = data[indx,]
+train = data[-indx,]
+
+glm = glm(not_skipped ~ session_position + session_length + context_switch + no_pause_before_play + 
+            short_pause_before_play + long_pause_before_play + hist_user_behavior_n_seekfwd +
+            hist_user_behavior_n_seekback + hist_user_behavior_is_shuffle + hour_of_day + premium ,binomial(link = logit),data = train)
+```
+Now that we've retrained the model we want to test it. First off we want to make predictions, which can be done using the predict() function.
+```{r}
+p = predict(glm,newdata = test,type = 'response')
+```
+
+Then we want to see how it did. There are many ways we can do this.
+
+## Model Evaluation
+
+One of the simplest ways to evaluate a model is accuracy (i.e. what percentage of the predictions did the model get right).
+This can simply be done by adding up the number of correct predictions and then divide it by the total number of predictions. However, the predict function with type = 'response' returns a probability that not_skipped is TRUE thus we need to decide on a threshold for classifying something as TRUE. For simplicity we'll say that if the prediction is greater than 50% we will classify it as TRUE. Then we'll calculate the accuracy.
+
+```{r}
+p_tf = p>.5
+accuracy = sum(p_tf==test$not_skipped)/length(p_tf)
+accuracy
+```
+Now this is obviously a terrible model.I will introduce is a confusion matrix. A confusion mtrix for a binary categorization divides all of the predictions into true/false positives and true/false negatives. You can produce a confusion matrix pretty easily with the dplyr package. 
+
+```{r}
+library(dplyr)
+frame = tibble(true=test$not_skipped,pred=p_tf)
+conf_mat = (frame %>% group_by(true,pred) %>% count())$n %>% matrix(ncol = 2,nrow=2,dimnames = list(c('True','False'),c('True','False')))
+conf_mat
+```
+The top left is true positives, top right is false positives, the bottom left is false negatives and the bottom right is true negatives. From this matrix we can see that there are a large number of false positives and few false negatives. We can conclude that this model over-estimates positives. From this we can also calculate the class precision and recall which allows us to compare values across different test sets. 
+```{r}
+precision= c(conf_mat[1,1]/sum(conf_mat[,1]),conf_mat[2,2]/sum(conf_mat[,2]))
+recall = c(conf_mat[1,1]/sum(conf_mat[1,]),conf_mat[2,2]/sum(conf_mat[2,]))
+print(list(precision=precision,recall=recall))
+```
+While the True precision is good, the other metrics are pretty low. 
+The last evaluation metric I will introduce is the ROC curve. When calculating accuracy we have to choose a threshold, The ROC curve plots the True positive rate versus the false negative rate for different probability thresholds. The ROCR package can be used to make a ROC curve pretty easily.
+```{r}
+library(ROCR)
+rocr = prediction(p,test$not_skipped)
+roc = performance(rocr,'tpr','fpr')
+plot(roc)
+```
+
+The closer this line is to y=x the worse it is. We can quantify this with AUC (Area Under the Curve). The closer AUC is to one, the better the model. An AUC score of .5 is the same as a totally random chance. We can compute the model AUC in R using the performance function from ROCR.
+```{r}
+auc_obj = performance(rocr,'auc')
+auc = auc_obj@y.values[[1]]
+auc
+```
+Again this shows that the model is pretty bad. ROC/AUC is fairly broadly applicable, however, your model must produce probabilities and not just categorizations. The last model evaluation technique 
+
+## Categorical Variables
+Regardless of the metric our initial model is not very good. So, the next step is step is to try incorporate better/more data. If you look at our initial data set there are number of columns with text data that we did not incorporate into the model. If we consider that text data as categories we can incorporate them into our model. In R the data type factor was created to account for categorical data. If a category has N subcategories/levels through One Hot encoding you can convert them into N-1 True/False values (also called dummy variables). R has built-in function to handle this called model.matrix(). Similarly to the glm formula you set the parameters to the data and a formula. To encode a categorical variable with One Hot and a '-1' after that column name in the formula. 
+
+Looking back at the data you'll notice that there are over 50,000 levels for track and 1,000 levels for session_id. This would result in far too many columns so I am going to omit those from the equation along with the previously ommitted skip columns.
+```{r}
+#Drop skip1-3 from data
+data_reduced = subset(data,select=-c(not_skipped,skip_1,skip_2,skip_3,session_id,track_id_clean))
+#This is a fast way to create the formula string including one-hot encoding for the model.matrix function
+cl = sapply(data_reduced, class)
+ps = sapply(cl, function(x){
+  return(ifelse(x=='factor'||x=='logical','-1',''))
+})
+f =  paste(colnames(data_reduced),ps,collapse = " + ")
+form = as.formula(paste(c('not_skipped ~ ',f),collapse = ''))
+#>>>>>>>>>>>>>
+X = model.matrix(form,data=data)
+```
+
+
