@@ -100,7 +100,7 @@ Now this is obviously a terrible model.I will introduce is a confusion matrix. A
 ```{r eval2}
 library(dplyr)
 frame = tibble(true=test$not_skipped,pred=p_tf)
-conf_mat = (frame %>% group_by(true,pred) %>% count())$freq %>% matrix(ncol = 2,nrow=2,dimnames = list(c('True','False'),c('True','False')))
+conf_mat = (frame %>% dplyr::group_by(true,pred) %>% dplyr::count())$n %>% matrix(ncol = 2,nrow=2,dimnames = list(c('True','False'),c('True','False')))
 conf_mat
 ```
 The top left is true positives, top right is false positives, the bottom left is false negatives and the bottom right is true negatives. From this matrix we can see that there are a large number of false positives and few false negatives. We can conclude that this model over-estimates positives. From this we can also calculate the class precision and recall which allows us to compare values across different test sets. 
@@ -177,7 +177,7 @@ p_numeric = predict(glm_numeric,newdata = test_numeric,type='response')
 ```{r data2-6}
 p_numeric_tf = p_numeric > .5
 frame_numeric = tibble(true=test_numeric$not_skipped,pred=p_numeric_tf)
-conf_mat_numeric = (frame %>% group_by(true,pred) %>% count())$freq%>% matrix(ncol = 2,nrow=2,dimnames = list(c('True','False'),c('True','False')))
+conf_mat_numeric = (frame %>% dplyr::group_by(true,pred) %>% dplyr::count())$n%>% matrix(ncol = 2,nrow=2,dimnames = list(c('True','False'),c('True','False')))
 conf_mat_numeric
 
 rocr_numeric = prediction(p_numeric,test_numeric$not_skipped)
@@ -234,7 +234,7 @@ coefs
 ```
 We can now see that beat_strength, bounciness, danceability, dyn_range_mean, energy, loudness, organism, speechiness, valence and sevral acoustic vectors have coefficients of effectively 0.
 So, we can remove them. However, lets first check our evaluation metrics and see if lasso has improved our model at all. Instead of manually calculating all of our evaluation metrics again, glmnet has some built-in functions to do that for us.
-```{r pmod3}
+```{r pmod4}
 confusion.glmnet(lasso,newx=X_lasso_test,newy = Y_lasso_test)
 measure_lasso = assess.glmnet(lasso,newx=X_lasso_test,newy = Y_lasso_test)
 measure_lasso$auc[[1]]
@@ -337,7 +337,7 @@ total_data2$listen_time = listen_time
 
 total_data2 %>% dplyr::group_by(skip_1,skip_2,skip_3,not_skipped,listen_time) %>% dplyr::count()
 ```
-With this accomplished we need consider what tools we can use to model this. There are many ways to go about a multiple classification problem. One is to do one-vs.-rest modeling where you fit a logistic function to each category and then classify that observation as whichever class had the highest predicted probability. This is also known as Multinomial Logistic Regression, and once again glmnet has a function for this. All you have to do is change the family parameter on your glmnet model from 'binomial' to 'multinomial'. (Note: Because AUC relies on having True positives and False positives, it no longer makes sense in a multi-class setting and can no longer be applied)
+With this accomplished we need consider what modeling tools we can use. There are many ways to go about a multiple classification problem. One is to do one-vs.-rest modeling where you fit a logistic function to each category and then classify that observation as whichever class had the highest predicted probability. This is also known as Multinomial Logistic Regression, which glmnet handles. All you have to do is change the family parameter on your glmnet model from 'binomial' to 'multinomial'. (Note: Because AUC relies on having True positives and False positives, it no longer makes sense in a multi-class setting and can no longer be applied)
 
 ```{r}
 temp_data_listen = subset(total_data2,select=-c(not_skipped,skip_1,skip_2,skip_3,session_id,track_id_clean,date,listen_time))
@@ -387,7 +387,7 @@ print(list(full=Full_precision1,long= long_precision1,med = med_precision1, shor
 knitr::include_graphics('prec.png')
 
 ```
-Based on the confusion matrix this model does reasonably well in 3 of the 5 categories. Med is quite weak with most of the true Med's being predicted as either short or long and the unkown category performs teribly. Unknown is only predicted as the most likely category  once. This suggests a number of possibilities. First, that there is not enough Unkown classifications in the data for the model to develop "confidence" in predicting that class. Another possibility is that these are simply errors in the data collection and they should actually be in one of the other classes. If either of these are true it makes some sense to remove that data for now and restest the model without it
+Based on the confusion matrix this model does reasonably well in 3 of the 5 categories. Med is quite weak with most of the true Med's being predicted as either short or long and the unkown category performs teribly. Unknown is only predicted as the most likely category  once. This suggests a number of possibilities. First, that there are not enough Unkown classifications in the data for the model to develop "confidence" in predicting that class. Another possibility is that these are simply errors in the data collection and they should actually be in one of the other classes. If either of these are true it makes some sense to remove that data for now and restest the model without it.
 
 ```{r}
 total_data3 = total_data2 %>% dplyr::filter(listen_time!='Unknown')
@@ -439,15 +439,13 @@ Even having dropped the unkowns the results only improved marginally. But we've 
 
 # Sequence Analysis
 
-If we take into consideration that that each row contains a session_id and and session position tag we can see that these observations are actually sequential. When data is collected over time it can be influenced by trends over time. This is known as autocorrelation. One way of dealing with this is to say that the state of an observation in some sequence is influenced by previous observations in that sequence. This can be modeled using lag-N autocorrelation. This simply means that you include state of the observation N time steps before the current observation. Now, you may have noticed that as our models became more complex, it took drastically longer to train them. This means that with large models it becomes inefficient and computationally expensive to just try new things until they work. So, one way to cut down on this is to investigate and visualize potential directions before actually applying them to the model. Sequences and time-series naturally lend themselves to visualization because change over time is something that is easily understood graphically. In the next section we will explore some tools to help us understand potential time trends in our data before we try adding them into our models.
+**TraMineR**, **seqHMM**, and sequence analysis in general, were designed for and have been primarily applied to sociological data such as life course analysis (*see*: Gabadinho et al.; Helske et al.). The assumption of the sociological domain is built into the packages to an extent: TraMineR requires start and end points to be specified for each sequence step, and accepts ages or calendar years as values (). Thus, adapting it to listening session data required a bit of fudging, i.e., each session step is given an "age-range" from its position in the sequence to the next position in the sequence. For example, song 1 has a start point of 1 and an endpoint of 2. 
 
-## Visualization
-**TraMineR**, **seqHMM**, and sequence analysis in general, were designed for and have been primarily applied to sociological data such as life course analysis (*see*: Gabadinho et al.; Helske et al.). The assumption of the sociological domain is built into the packages to an extent: TraMineR requires start and end points to be specified for each sequence step, and accepts ages or calendar years as values (cite package docs). Thus, adapting it to listening session data required a bit of fudging, i.e., each session step is given an "age-range" from its position in the sequence to the next position in the sequence. For example, song 1 has a start point of 1 and an endpoint of 2. 
-
-Various researchers have studied sequential patterns in music session listening behavior using other methods (*see*: Cheng et al.), but to the best of our knowledge this is the first application of Hidden Markov Models and the above-referenced R packages to the problem. 
+Sequential music listening behavior has been studied using other methods (*see*: Cheng et al.), but to the best of our knowledge this is the first application of Hidden Markov Models and the above-referenced R packages to the problem. 
 
 ### Additional pre-processing
-The dataset has 4 boolean values corresponding to whether a track was played very briefly, briefly, most of the way through, or all the way through. Initially, we assumed that these 4 attributes were a one-hot encoding of how long a song was played before being skipped. We later noticed that for some observations, more than one value would be true, so apparently a song was both played only briefly and played most of the way through. Several thousand observations has every value set to false. We discarded these observations as we were unsure if they were erroneous or otherwise how to interpret them. For observations with multiple true skip values, we used the longest. This effectively condensed all 4 skip variables into a boolean, since only 15 out of one  million observations had skip_2 true and skip_3 false, while 0 had skip_1 true and skip_3 false. We were also unsure how to interpret, and consequently discarded, observations where a track was skipped but ended because of the track finishing. 
+
+The dataset has 4 boolean values corresponding to whether a track was played very briefly, briefly, most of the way through, or all the way through. Initially, we assumed that these 4 attributes were a one-hot encoding of how long a song was played before being skipped. We later noticed that for some observations, more than one value would be true, so apparently a song was both played only briefly and played most of the way through. Several thousand observations have every value set to false. We discarded these observations as we were unsure if they were erroneous or otherwise how to interpret them. For purposes of sequence analysis, we discarded the "skip" variables and instead used the variable describing how a user ended a song (hist_user_behavior_reason_end) to indicate skips, i.e. if the reason was "trackdone" we assumed the song was not skipped. 
 
 ```{r import sts files, include=FALSE}
 library(tidyr)
@@ -455,6 +453,7 @@ library(seqHMM)
 library(TraMineR)
 library(RColorBrewer)
 library(colorspace)
+library(MASS)
 skip <- read.csv("Sequence Analysis/skip_sequences.csv", row.names = 1)
 context <- read.csv("Sequence Analysis/context_sequences.csv", row.names = 1)
 year <- read.csv("Sequence Analysis/year_sequences.csv", row.names = 1)
@@ -477,10 +476,14 @@ pause <- read.csv("Sequence Analysis/pause_sequences.csv", row.names = 1)
 ```
 In total, we created 18 sequence objects, each representing one channel of user behavior: e.g. song dance-ability and tempo; song release decade, etc. Below is the code used to create one sequence object for the release decade of songs:
 ```{r sequence example, results = "hide", message=FALSE}
+# year_seq <- seqformat(Sequence_Train, from = "SPELL", to = "STS", id = 1, begin = 2, end = end, status = 'release_year', process = F) <--- used to convert dataframe format. Original dataframe not included in this tutorial because of size. 
+
+#distinct(Sequence_Train, skip_1,skip_2,skip_3)
+#Sequence_Train$length 
 year <- read.csv("Sequence Analysis/year_sequences.csv", row.names = 1)
 decade_sequence <- seqdef(year, var = 2:21, cpal = sequential_hcl(7,"SunsetDark"))
 ```
-Note that year_sequences.csv was pre-processed using the seqformat() function to convert the data from SPELL format to the STS format that **TraMineR** expects. SPELL format uses multiple rows for every obsservation, where each row is a step in that observation's sequence. STS format has one row per observation and represents each step as a column attribute. **TraMineR** and **seqHMM** are also specific to discrete state sequences. Continuous variables representing acoustic track features, such as "beat-strength", "energy", and "dance-ability" were converted to discrete scores by first normalizing them, then multiplying by 10 and rounding to the nearest integer. Finally, we converted release years to release decades to reduce the number of states and enhance visual interpretability of the plots. 
+Note that year_sequences.csv was pre-processed using the seqformat() function to convert the data from SPELL format to the STS format that **TraMineR** expects. SPELL format uses multiple rows for every obsservation, where each row is a step in that observation's sequence. STS format has one row per observation and represents each step as a column attribute. **TraMineR** and **seqHMM** are also specific to discrete state sequences. Continuous variables representing acoustic track features, such as "beat-strength", "energy", and "dance-ability" were converted to discrete scores by first normalizing them, then multiplying by 10 and rounding to the nearest integer. Finally, we converted release years to release decades to reduce the number of states and enhance visual interpretability of the plots.  In the next section we will explore some tools to help us understand potential time trends in our data before we try adding them into our models.
 
 ```{r define sequences,echo=FALSE,message=FALSE}
 skip_sequence <- seqdef(skip, var = 2:21, states = c("appload","backbtn","clickrow","endplay","fwdbtn","logout","remote","no skip"),alphabet = c("1", "2", "3", "4", "5", "6", "7","no_skip"), cpal = diverge_hcl(8,"Tropic"))
@@ -503,16 +506,19 @@ val_sequence <- seqdef(val, var = 2:21, cpal =  diverge_hcl(45,"Blue-Red"))
 ```
 TraMineR sequence objects have built-in plotting methods. We can plot the distribution of states in each sequence step, a selected sample of sequences, or the frequency of the most common sequence. The frequency plots have limited value for long sequences with many possible states, as the high variation means very few sequences will be identical, so the most common sequences may still be quite rare. 
 
-Below are plots of a selection of state channels. 
-```{r plots, fig.height = 14, fig.width=8, message=FALSE}
-# Plots
-plot_ub1 <- ssp(list(skip_sequence[200:400,], start_sequence[200:400,]),
-sortv = "from.start", sort.channel = 1, type = "I",
+Below are plots of a selection of state channels. We immediately see that sessions tend to remain in one context, i.e. not switch between playlist types, and context does not account for much variation in skipping behavior. This relates back to feature selection for the prediction task. 
+```{r, fig.height = 14, fig.width=8, echo = TRUE}
+# An example of defining one ssp (plot) object
+plot_ub1 <- ssp(list(skip_sequence[200:400,], start_sequence[200:400,]), #setting number of sequences to plot
+sortv = "from.start", sort.channel = 1, type = "I", # 'I' corresponds to observations, as opposed to a distribution. 
 ylab = c("Skip", "Song Start"),
 xtlab = 1:20, xlab = "Session Position", title = "200 User Behavior Sequences",
 title.n = FALSE, legend.prop = 0.4, ylab.pos = c(2, 2), cex.legend = .8,
-ncol.legend = c(1, 2))
+ncol.legend = c(1, 2)) # aesthetic properties
+```
 
+
+```{r plots, fig.height = 14, fig.width=8, echo = FALSE, message=FALSE}
 plot_ub2 <- ssp(list(skip_sequence[200:400,], start_sequence[200:400,]),
 sortv = "from.start", sort.channel = 1, type = "d",
 ylab = c("Skip", "Song Start"),
@@ -563,29 +569,39 @@ title.n = FALSE, legend.prop = .1, ylab.pos = c(2, 1,2,1,2,1,2,1), cex.legend = 
 ncol.legend = c(6,6,6,6,6,6,6,6),border = NA)
 class(plot_ub1)
 seq_plots <- list(plot_ub1,plot_ub2, plot_ub3,plot_ub4,plot_track1, plot_track2, plot_track3, plot_track4)
+```
 
+This code lays plot objects out on a grid. 
+```{r, fig.height = 14, fig.width=8, echo = FALSE, message=FALSE}
 gridplot(seq_plots[1:4], nrow =4, ncol = 1,with.legend = "FALSE",legend.pos = "right")
 
 gridplot(seq_plots[5:7], nrow = 2, ncol =2, with.legend = F)
 
 ```
+Exceptions can be as interesting as trends: the track feature plots reveal one session with an unusual number of instrumental tracks and several with noticeably high valence (aka positivity; *see* Spotify "Get Audio Features" page). 
+
+### HMMs
 
 Hidden Markov Models assume that observed sequential data is generated by an unobserved sequential process which obeys the Markov assumption. As with clustering, optimizing an HMM is dependent on a manually specified number of states. Below we use the **seqHMM** package to fit an HMM to selected channels of our data. 
 
-*Note: the fit_model function can take quite awhile to run. 
-```{r, eval = FALSE}
-skip_model <- build_hmm(observations = skip_sequence, n_states = 4)
-skip_fit <- fit_model(skip_model)
-skip_fit$model
-ssplot(skip_fit$model, plots = "hidden.paths", type = "I")
+*Note: the fit_model function has been commented out as it can take quite awhile to run. Relavent output was saved to disk, but you can see the code that was used.
+```{r hidden states}
+channels = list(dance_sequence, speech_sequence, live_sequence, loud_sequence)
+names = c("dance", "speech", "live", "loud")
+#track_model <- build_hmm(observations = channels, n_states = 4, channel_names = )
+#track_fit <- fit_model(track_model)
+#write.matrix(track_fit$model$transition_probs, "hidden_state_transition_probs")
+#ssplot(track_fit$model, plots = "both", type = "I", tlim = 1:500, border = NA, ylab = c("dance","speech", "live", "loud"), cex.legend = .4, ncol.legend = 5, title = "Observed and Hidden States")
+trans_mat <- read.csv("hidden_state_transition_probs", header = TRUE)
+print(trans_mat)
+knitr::include_graphics('hidden_states.png')
 ```
-
-
-Mixture Markov models can be used to cluster entire sequences, rather than individual states. **seqHMM** implements clustering as a special case of MHMMs where the only hidden state is class (*see*: Helske et al.). We fit such a model below using multiple channels and covariates, which can be incorporated into prior probabilities during computation. 
+The table above is the state transition matrix from the HMM, which indicates that the states seqHMM 
+has found tend to remain constant over sequences. The plot confirms this. The relationship between channels and hidden states is unclear, largely due to the large number of channel states. Condensing these states into range categories in the future may produce more interpretable results. 
 
 ## Time Series modeling
 
-Now that we've analyzed this data as a sequence we know that there are some features that definitely seem to affect each other over time. For simplicity I've decided to only add in one of these: listen_time and to only use lag-1. Additionally for the first states in a sequence I will assume that they have the same lag_listen_time state as their listen_time
+Now that we've analyzed this data as a sequence and as an HMM we know that there are some features that definitely seem to affect each other over time. For simplicity I've decided to only add in one term as proof of concept (listen_time at lag-1). Additionally for the first states in a sequence I will assume that they have the same lag_listen_time state as their listen_time
 
 ```{r time series}
 dim(total_data2)
@@ -658,7 +674,15 @@ knitr::include_graphics('prec3.png')
 
 ```
 You can see here that the precision for both med and long increase as well as the overall accuracy. The short precision dropped slightly and the Full precision was more or less unchanged. You can imagine that by adding in more sequence terms for listen_time as well as for other categoires we could further increase our prediction accuracy.
+
+# Conclusions
+
+Sequential analysis of time-series may guide more efficient binary prediction models. If we take into consideration that that each row contains a session_id and and session position tag we can see that these observations are actually sequential. When data is collected over time it can be influenced by trends over time. This is known as autocorrelation. 0ne way of dealing with this is to say that the state of an observation in some sequence is influenced by previous observations in that sequence. This can be modeled using lag-N autocorrelation. This simply means that you include state of the observation N time steps before the current observation. Now, you may have noticed that as our models became more complex, it took drastically longer to train them. This means that with large models it becomes inefficient and computationally expensive to just try new things until they work. So, one way to cut down on this is to investigate and visualize potential directions before actually applying them to the model. Sequences and time-series naturally lend themselves to visualization because change over time is something that is easily understood graphically.
+
+Mixture Markov Models or Markov Models, with or without hidden states, may be an effective representation of music streaming sessions and their relationships. Intuitively, it seems plausible that present listening behavior will depend on the immediate past of listening behavior. For example, the song I am listening to right now puts me in a mood which will influence which song I'd like to hear next. At the same time, listening sessions take place in an overall context such as a commute to work or a big party, which may also influence their behavior. Mixture Markov Models can capture both state transition behavior and overall sequence behavior. Further exploration of this possibility will require condensing track features into a smaller number of discrete states and experimenting with different combinations of channels or cluster numbers. 
+
 # References
+
 *Brost, Brian, Rishabh Mehrotra, and Tristan Jehan. “The Music Streaming Sessions Dataset.” ArXiv:1901.09851 [Cs], December 31, 2018. http://arxiv.org/abs/1901.09851.
 *Cheng, Zhiyong, Jialie Shen, Lei Zhu, Mohan Kankanhalli, and Liqiang Nie. “Exploiting Music Play Sequence for Music Recommendation.” In Proceedings of the Twenty-Sixth International Joint Conference on Artificial Intelligence, 3654–60. Melbourne, Australia: International Joint Conferences on Artificial Intelligence Organization, 2017. https://doi.org/10.24963/ijcai.2017/511.
 *“Deep Content-Based Music Recommendation,” n.d., 9.
@@ -666,8 +690,10 @@ You can see here that the precision for both med and long increase as well as th
 *“Get Audio Features for a Track.” Spotify, n.d. https://developer.spotify.com/documentation/web-api/reference/tracks/get-audio-features/.
 *Hansen, Christian, Casper Hansen, Stephen Alstrup, Jakob Grue Simonsen, and Christina Lioma. “Modelling Sequential Music Track Skips Using a Multi-RNN Approach.” ArXiv:1903.08408 [Cs], March 20, 2019. http://arxiv.org/abs/1903.08408.
 *Helske, Satu, and Jouni Helske. “Mixture Hidden Markov Models for Sequence Data: The SeqHMM Package in R.” Journal of Statistical Software 88, no. 3 (2019). https://doi.org/10.18637/jss.v088.i03.
+*Penn State Department of Statistics. “10.2 - Autocorrelation and Time Series Methods,” n.d. https://newonlinecourses.science.psu.edu/stat462/node/188/.
 *Porter, Michael. “Penalized Regression Lecture Notes: Ridge, Lasso, Elasticnet,” Fall 2019.
 *Smyth, Padhraic. “Clustering Sequences with Hidden Markov Models,” n.d., 7.
-
+*Wikipedia. “Logistic Regression,” n.d. https://en.wikipedia.org/wiki/Logistic_regression.
+*Wikipedia. “Multiple Logistic Regression,” n.d. https://en.wikipedia.org/wiki/Multinomial_logistic_regression.
 
 
