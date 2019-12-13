@@ -5,9 +5,18 @@ date: "12/13/2019"
 output: html_document:
   toc: true
 ---
-### Introduction
+# Introduction
+
+Streaming services like Spotify and Last.fm have drastically changed the way we listen to music. People have an unprecedented quantity and variety of songs available at the touch of a button -- or even the uttering of a command. Likewise, music creators and distributors have massive amounts of data available on listeners behavior. In this article we'll explore one of these streaming datasets to identify interesting patterns and causal relationships using data mining techniques.
+
+The Music Streaming Sessions Dataset (*see* Brost et al.) was assembled and released by Spotify to enable public research into listener behavior. Specifically, they were interested in predicting whether a user would skip a given song in a listening session. The first part of this article will focus on the prediction task. RNNs were the winning models (*see* Hansen et al.), but here we will apply other classification methods to the data for the purpose of illustrating their comparative performance. 
+
+While song skipping behavior is certainly important, this dataset contains a trove of acoustic and behavioral information on 150 million listening sessions (we only use a small fraction because of computational limitations), so we wanted to go beyond the binary prediction task and research the sessions themselves for patterns. In the second part of this article we will apply Sequential Analysis methods borrowed from sociology to visualize and cluster the sessions as sets of time-series. 
+
+To conclude, we will briefly discuss how Sequence Analysis and visualizations relate back to the prediction task by indicating which modeling directions are worth pursuing.
 
 
+# Classification
 
 Machine Learning can be a useful tool for many sorts of problems. One of the most common type of problem is categorization. This tutorial will give an in-depth approach to solving these types of problems. For the purpose of this tutorial we will be using the spotify sequential skip prediction data set which can be found here {https://www.crowdai.org/challenges/spotify-sequential-skip-prediction-challenge}
 
@@ -293,6 +302,151 @@ Now that we've succeeded in a relatively simple problem, let's try something mor
 ```{r,echo=FALSE}
 knitr::include_graphics('skip.png')
 ```
+
+# Sequence Analysis
+
+**TraMineR**, **seqHMM**, and sequence analysis in general, were designed for and have been primarily applied to sociological data such as life course analysis (*see*: Gabadinho et al.; Helske et al.). The assumption of the sociological domain is built into the packages to an extent: TraMineR requires start and end points to be specified for each sequence step, and accepts ages or calendar years as values (cite package docs). Thus, adapting it to listening session data required a bit of fudging, i.e., each session step is given an "age-range" from its position in the sequence to the next position in the sequence. For example, song 1 has a start point of 1 and an endpoint of 2. 
+
+Various researchers have studied sequential patterns in music session listening behavior using other methods (*see*: Cheng et al.), but to the best of our knowledge this is the first application of Hidden Markov Models and the above-referenced R packages to the problem. 
+
+### Additional pre-processing
+The dataset has 4 boolean values corresponding to whether a track was played very briefly, briefly, most of the way through, or all the way through. Initially, we assumed that these 4 attributes were a one-hot encoding of how long a song was played before being skipped. We later noticed that for some observations, more than one value would be true, so apparently a song was both played only briefly and played most of the way through. Several thousand observations has every value set to false. We discarded these observations as we were unsure if they were erroneous or otherwise how to interpret them. For observations with multiple true skip values, we used the longest. This effectively condensed all 4 skip variables into a boolean, since only 15 out of one million observations had skip_2 true and skip_3 false, while 0 had skip_1 true and skip_3 false. We were also unsure how to interpret, and consequently discarded, observations where a track was skipped but ended because of the track finishing. 
+
+```{r import sts files, include=FALSE}
+library(tidyr)
+library(plyr)
+library(seqHMM)
+library(TraMineR)
+library(RColorBrewer)
+library(colorspace)
+skip <- read.csv("Sequence Analysis/skip_sequences.csv", row.names = 1)
+context <- read.csv("Sequence Analysis/context_sequences.csv", row.names = 1)
+year <- read.csv("Sequence Analysis/year_sequences.csv", row.names = 1)
+dance <- read.csv("Sequence Analysis/dance_sequences.csv", row.names = 1)
+beat <- read.csv("Sequence Analysis/beat_sequences.csv", row.names = 1)
+bounce <-read.csv("Sequence Analysis/bounce_sequences.csv", row.names = 1)
+energy <- read.csv("Sequence Analysis/energy_sequences.csv", row.names = 1)
+flat <- read.csv("Sequence Analysis/flat_sequences.csv", row.names = 1)
+inst <- read.csv("Sequence Analysis/inst_sequences.csv", row.names = 1)
+live <- read.csv("Sequence Analysis/live_sequences.csv", row.names = 1)
+loud <- read.csv("Sequence Analysis/loud_sequences.csv", row.names = 1)
+speech <- read.csv("Sequence Analysis/speech_sequences.csv", row.names = 1)
+temp <- read.csv("Sequence Analysis/temp_sequences.csv", row.names = 1)
+val <- read.csv("Sequence Analysis/val_sequences.csv", row.names = 1)
+seekfwd <- read.csv("Sequence Analysis/seekfwd_sequences.csv", row.names = 1)
+seekbk <- read.csv("Sequence Analysis/seekbk_sequences.csv", row.names = 1)
+start <- read.csv("Sequence Analysis/start_sequences.csv", row.names = 1)
+pop <- read.csv("Sequence Analysis/pop_sequences.csv", row.names = 1)
+pause <- read.csv("Sequence Analysis/pause_sequences.csv", row.names = 1)
+```
+In total, we created 18 sequence objects, each representing one channel of user behavior: e.g. song dance-ability and tempo; song release decade, etc. Below is the code used to create one sequence object for the release decade of songs:
+```{r sequence example, results = "hide", message=FALSE}
+year <- read.csv("Sequence Analysis/year_sequences.csv", row.names = 1)
+decade_sequence <- seqdef(year, var = 2:21, cpal = sequential_hcl(7,"SunsetDark"))
+```
+Note that year_sequences.csv was pre-processed using the seqformat() function to convert the data from SPELL format to the STS format that **TraMineR** expects. SPELL format uses multiple rows for every obsservation, where each row is a step in that observation's sequence. STS format has one row per observation and represents each step as a column attribute. **TraMineR** and **seqHMM** are also specific to discrete state sequences. Continuous variables representing acoustic track features, such as "beat-strength", "energy", and "dance-ability" were converted to discrete scores by first normalizing them, then multiplying by 10 and rounding to the nearest integer. Finally, we converted release years to release decades to reduce the number of states and enhance visual interpretability of the plots. 
+
+```{r define sequences, include=FALSE}
+skip_sequence <- seqdef(skip, var = 2:21, states = c("appload","backbtn","clickrow","endplay","fwdbtn","logout","remote","no skip"),alphabet = c("1", "2", "3", "4", "5", "6", "7","no_skip"), cpal = diverge_hcl(8,"Tropic"))
+context_sequence <- seqdef(context, var = 2:21)
+dance_sequence <- seqdef(dance, var = 2:21, cpal = diverge_hcl(61,"Blue-Red"))
+beat_sequence <- seqdef(beat, var = 2:21, cpal = diverge_hcl(63,"Blue-Red"))
+bounce_sequence <- seqdef(bounce, var = 2:21, cpal = diverge_hcl(55,"Blue-Red"))
+start_sequence <- seqdef(start, var = 2:21, cpal = colorpalette[[8]])
+energy_sequence <- seqdef(energy, var = 2:21, cpal =  diverge_hcl(56,"Blue-Red"))
+flat_sequence <- seqdef(flat, var = 2:21, cpal =  diverge_hcl(212,"Blue-Red"))
+inst_sequence <- seqdef(inst, var = 2:21, cpal =  diverge_hcl(71,"Blue-Red"))
+live_sequence <- seqdef(live, var = 2:21, cpal =  diverge_hcl(68,"Blue-Red"))
+loud_sequence <- seqdef(loud, var = 2:21, cpal =  diverge_hcl(168,"Blue-Red"))
+pop_sequence <- seqdef(pop, var = 2:21, cpal =  diverge_hcl(111,"Blue-Red"))
+seekbk_sequence <- seqdef(seekbk, var = 2:21, cpal = sequential_hcl(31,"SunsetDark"))
+seekfwd_sequence <- seqdef(seekfwd, var = 2:21, cpal = sequential_hcl(20,"SunsetDark"))
+speech_sequence <- seqdef(speech, var = 2:21, cpal =  diverge_hcl(73,"Blue-Red"))
+temp_sequence <- seqdef(temp, var = 2:21, cpal =  diverge_hcl(65,"Blue-Red"))
+val_sequence <- seqdef(val, var = 2:21, cpal =  diverge_hcl(45,"Blue-Red"))
+```
+TraMineR sequence objects have built-in plotting methods. We can plot the distribution of states in each sequence step, a selected sample of sequences, or the frequency of the most common sequence. The frequency plots have limited value for long sequences with many possible states, as the high variation means very few sequences will be identical, so the most common sequences may still be quite rare. 
+
+Below are plots of a selection of state channels. 
+```{r plots, fig.height = 14, fig.width=8, echo = FALSE, message=FALSE}
+# Plots
+plot_ub1 <- ssp(list(skip_sequence[200:400,], start_sequence[200:400,]),
+sortv = "from.start", sort.channel = 1, type = "I",
+ylab = c("Skip", "Song Start"),
+xtlab = 1:20, xlab = "Session Position", title = "200 User Behavior Sequences",
+title.n = FALSE, legend.prop = 0.4, ylab.pos = c(2, 2), cex.legend = .8,
+ncol.legend = c(1, 2))
+
+plot_ub2 <- ssp(list(skip_sequence[200:400,], start_sequence[200:400,]),
+sortv = "from.start", sort.channel = 1, type = "d",
+ylab = c("Skip", "Song Start"),
+xtlab = 1:20, xlab = "Session Position", title = "User Behavior Distributions",
+title.n = FALSE, legend.prop = 0.4, ylab.pos = c(2, 2), cex.legend = .8,
+ncol.legend = c(1, 2), border = NA)
+
+plot_ub3 <- ssp(list(skip_sequence[200:400,], context_sequence[200:400,]),
+sortv = "from.start", sort.channel = 1, type = "I",
+ylab = c("Skip", "Context"),
+xtlab = 1:20, xlab = "Session Position", title = "Song Context vs. Skipping",
+title.n = FALSE, legend.prop = 0.4, ylab.pos = c(2, 2), cex.legend = .8,
+ncol.legend = c(1, 1), border = NA)
+
+plot_ub4 <- ssp(list(skip_sequence[200:400,], context_sequence[200:400,]),
+sortv = "from.start", sort.channel = 2, type = "I",
+ylab = c("Skip", "Context"),
+xtlab = 1:20, xlab = "Session Position", title = "Song Context vs. Skipping Sorted by Context",
+title.n = FALSE, legend.prop = 0.4, ylab.pos = c(2, 2), cex.legend = .8,
+ncol.legend = c(1, 1), border = NA)
+
+plot_track1 <- ssp(list(decade_sequence[200:400,], dance_sequence[200:400,],beat_sequence[200:400,]),
+sortv = "from.start", sort.channel = 2, type = "I",
+ylab = c("Decade", "Dance-iness", "Beat Strength"),
+xtlab = 1:20, xlab = "Session Position", title = "200 Track Feature Sequences",
+title.n = FALSE, legend.prop = 0.4, ylab.pos = c(2, 2,2), cex.legend = .8,
+ncol.legend = c(1, 6,6))
+
+plot_track2 <- ssp(list(energy_sequence[200:400,], live_sequence[200:400,],inst_sequence[200:400,]),
+sortv = "from.start", sort.channel = 1, type = "I",
+ylab = c("Energy", "Liveness", "Instrumentalness"),
+xtlab = 1:20, xlab = "Session Position", title = "200 Track Feature Sequences",
+title.n = FALSE, legend.prop = 0.4, ylab.pos = c(2, 2,2), cex.legend = .8,
+ncol.legend = c(6, 6,6))
+
+plot_track3 <- ssp(list(speech_sequence[200:400,], temp_sequence[200:400,],val_sequence[200:400,]),
+sortv = "from.start", sort.channel = 1, type = "I",
+ylab = c("Speechiness", "Tempo", "Valence"),
+xtlab = 1:20, xlab = "Session Position", title = "200 Track Feature Sequences",
+title.n = FALSE, legend.prop = 0.4, ylab.pos = c(2, 2,2), cex.legend = .8,
+ncol.legend = c(6, 6,6))
+
+plot_track4 <- ssp(list(dance_sequence[200:400,],beat_sequence[200:400,],energy_sequence[200:400,], live_sequence[200:400,],inst_sequence[200:400,],speech_sequence[200:400,], temp_sequence[200:400,],val_sequence[200:400,]),
+sortv = "from.start", sort.channel = 1, type = "d",
+ylab = c("Dnc", "Beat", "En", "Live", "Instr", "Speech", "Temp", "Val"),
+xtlab = 1:20, xlab = "Session Position", title = "Track Feature Distributions",
+title.n = FALSE, legend.prop = .1, ylab.pos = c(2, 1,2,1,2,1,2,1), cex.legend = .1,
+ncol.legend = c(6,6,6,6,6,6,6,6),border = NA)
+class(plot_ub1)
+seq_plots <- list(plot_ub1,plot_ub2, plot_ub3,plot_ub4,plot_track1, plot_track2, plot_track3, plot_track4)
+
+gridplot(seq_plots[1:4], nrow =4, ncol = 1,with.legend = "FALSE",legend.pos = "right")
+
+gridplot(seq_plots[5:7], nrow = 2, ncol =2, with.legend = F)
+
+```
+
+Hidden Markov Models assume that observed sequential data is generated by an unobserved sequential process which obeys the Markov assumption. As with clustering, optimizing an HMM is dependent on a manually specified number of states. Below we use the **seqHMM** package to fit an HMM to selected channels of our data. 
+
+*Note: the fit_model function can take quite awhile to run. 
+```{r, eval = FALSE}
+skip_model <- build_hmm(observations = skip_sequence, n_states = 4)
+skip_fit <- fit_model(skip_model)
+skip_fit$model
+ssplot(skip_fit$model, plots = "hidden.paths", type = "I")
+?build_lcm()
+```
+State 4 seems to indicate non-skipping behavior while state 3 is associated with pressing the forward button. Based on the distribution, this may actually be a Markov Model, which is a special case of the HMM where the hidden states correspond perfectly with the observed states (i.e. there are no hidden states.)
+
+Mixture Markov models can be used to cluster entire sequences, rather than individual states. **seqHMM** implements clustering as a special case of MHMMs where the only hidden state is class (*see*: Helske et al.). We fit such a model below using multiple channels and covariates, which can be incorporated into prior probabilities during computation. 
 
 
 # References
