@@ -21,19 +21,19 @@ Machine Learning can be a useful tool for many sorts of problems. One of the mos
 
 ## Data Loading and Cleaning pt. 1
 The first thing to do is to load the data which in this case can be done using the read.csv() function. You can then view the loaded data using View() and you can see the structure of the data using str().
-```{r}
+```{r Data 1}
 set.seed(10201998)
 #assuming the dcsv files are in your rstudio project folder
 data <- read.csv("log_mini.csv")
 str(data)
 ```
 To keep this simple our goal will be to predict whether or not a song will be skipped. This information can be seen in the 'not_skipped' column. Now you might notice that this column contains the test words 'true' and 'false'. Unfortunately most if not all Machine learning tools cannot work with test inputs. Thus we need to convert this to a binary representation. This can be done pretty easily in R. (note:specific columns in a dataframe can be accessed with the $ operator followed by the name of the column)
-```{r}
+```{r Data1-2}
 data$not_skipped = as.logical(data$not_skipped)
 str(data)
 ```
 If you go back to the view of data you can now see that the 'not_skipped' column contains 'TRUE' and 'FALSE'. This may seem like text but under the hood R represents these as 0s and 1s. You'll probably also notice that there are a number of other columns with text 'true' and 'false values. You can go ahead and convert these as well.
-```{r}
+```{r Data1-3}
 data$skip_1 = as.logical(data$skip_1)
 data$skip_2 = as.logical(data$skip_2)
 data$skip_3 = as.logical(data$skip_3)
@@ -43,7 +43,7 @@ str(data)
 ```
 
 The as.logical function can also handle binary representations and while not always necessary, for the sake of consistency you can convert the binary columns to logical as well.
-```{r}
+```{r Data1-4}
 data$context_switch = as.logical(data$context_switch)
 data$no_pause_before_play <- as.logical(data$no_pause_before_play)
 data$short_pause_before_play <- as.logical(data$short_pause_before_play)
@@ -62,14 +62,14 @@ $$logit^{-1}(\alpha)= \frac{exp(\alpha)}{1+exp(\alpha)}$$
 
 In R you can fit a logistic regression using the glm() function with the setting family=binomial(link=logit). You can use as many variables as you want to make predictions so we might as well use all the data we can. Because more information is always better, right? (This is actually very wrong but I will get into that later). So I will use all of the numeric data that we have (except for skip_1-3 because they are analogs for not_skipped). (Note: The formula paramter in the glm should be in the form (y ~ x1 + x2 +...)).
 
-```{r}
+```{r log1}
 glm = glm(not_skipped ~ session_position + session_length + context_switch + no_pause_before_play + 
             short_pause_before_play + long_pause_before_play + hist_user_behavior_n_seekfwd +
             hist_user_behavior_n_seekback + hist_user_behavior_is_shuffle + hour_of_day + premium ,family = binomial(),data = data)
 ```
 Now that you have a model you want to test it, right? Well, The common practice to evaluate models is to split whatever data using you are using into train and test sets. So we'll re-run this model after splitting the data. You want generally want to maximize the amount of training data, but you also need a sufficient number of rows to test on. For this example we'll reserve 10% of the data for training.
 
-```{r}
+```{r log2}
 indx = sample(dim(data)[1],dim(data)[1]%/%10)
 test  = data[indx,]
 train = data[-indx,]
@@ -79,7 +79,7 @@ glm = glm(not_skipped ~ session_position + session_length + context_switch + no_
             hist_user_behavior_n_seekback + hist_user_behavior_is_shuffle + hour_of_day + premium ,binomial(link = logit),data = train)
 ```
 Now that we've retrained the model we want to test it. First off we want to make predictions, which can be done using the predict() function.
-```{r}
+```{r log3}
 p = predict(glm,newdata = test,type = 'response')
 ```
 
@@ -90,28 +90,28 @@ Then we want to see how it did. There are many ways we can do this.
 One of the simplest ways to evaluate a model is accuracy (i.e. what percentage of the predictions did the model get right).
 This can simply be done by adding up the number of correct predictions and then divide it by the total number of predictions. However, the predict function with type = 'response' returns a probability that not_skipped is TRUE thus we need to decide on a threshold for classifying something as TRUE. For simplicity we'll say that if the prediction is greater than 50% we will classify it as TRUE. Then we'll calculate the accuracy.
 
-```{r}
+```{r eval1}
 p_tf = p>.5
 accuracy = sum(p_tf==test$not_skipped)/length(p_tf)
 accuracy
 ```
 Now this is obviously a terrible model.I will introduce is a confusion matrix. A confusion mtrix for a binary categorization divides all of the predictions into true/false positives and true/false negatives. You can produce a confusion matrix pretty easily with the dplyr package. 
 
-```{r}
+```{r eval2}
 library(dplyr)
 frame = tibble(true=test$not_skipped,pred=p_tf)
-conf_mat = (frame %>% group_by(true,pred) %>% count())$n %>% matrix(ncol = 2,nrow=2,dimnames = list(c('True','False'),c('True','False')))
+conf_mat = (frame %>% group_by(true,pred) %>% count())$freq %>% matrix(ncol = 2,nrow=2,dimnames = list(c('True','False'),c('True','False')))
 conf_mat
 ```
 The top left is true positives, top right is false positives, the bottom left is false negatives and the bottom right is true negatives. From this matrix we can see that there are a large number of false positives and few false negatives. We can conclude that this model over-estimates positives. From this we can also calculate the class precision and recall which allows us to compare values across different test sets. 
-```{r}
+```{r eval3}
 precision= c(conf_mat[1,1]/sum(conf_mat[,1]),conf_mat[2,2]/sum(conf_mat[,2]))
 recall = c(conf_mat[1,1]/sum(conf_mat[1,]),conf_mat[2,2]/sum(conf_mat[2,]))
 print(list(precision=precision,recall=recall))
 ```
 While the True precision is good, the other metrics are pretty low. 
 The last evaluation metric I will introduce is the ROC curve. When calculating accuracy we have to choose a threshold, The ROC curve plots the True positive rate versus the false negative rate for different probability thresholds. The ROCR package can be used to make a ROC curve pretty easily.
-```{r}
+```{r eval4}
 library(ROCR)
 rocr = prediction(p,test$not_skipped)
 roc = performance(rocr,'tpr','fpr')
@@ -119,7 +119,7 @@ plot(roc)
 ```
 
 The closer this line is to y=x the worse it is. We can quantify this with AUC (Area Under the Curve). The closer AUC is to one, the better the model. An AUC score of .5 is the same as a totally random chance. We can compute the model AUC in R using the performance function from ROCR.
-```{r}
+```{r eval5}
 auc_obj = performance(rocr,'auc')
 auc = auc_obj@y.values[[1]]
 auc
@@ -128,28 +128,28 @@ Again this shows that the model is pretty bad. ROC/AUC is fairly broadly applica
 
 
 ## Data Cleaning pt2: Continuous variables and joining
-```{r}
+```{r data2-1}
 songs = read.csv('tf_mini.csv')
 str(songs)
 ```
 Looking at this new data you'll notice its mostly numeric data there are however some things don't necessarily make much sense as numeric data like time_signature and key. So, first off we'll change those to be factors.
-```{r}
+```{r data2-2}
 songs$key = as.factor(songs$key)
 songs$time_signature = as.factor(songs$time_signature)
 ```
 Now, the rest of the numeric data seems to make sense, but there is one more thing to do before we merge the two tables: standardizing our variables. In statistics it's common practice to standardize numeric data because it converts those numbers into a measure of how far above/below the mean a number is. In R the function scale() can do this for us automatically. We'll also usd the rapply() function to allow us to scale all of the numeric columns in one command. 
-```{r}
+```{r data2-3}
 songs$duration = as.numeric(songs$duration)
 songs_scaled = rapply(songs, scale,c('numeric'),how='replace')
 ```
 Now we can join the two tables together. The full_join() function will allow us to link all of the play data from the first table with data about the song that is being played from the songs table. 
 
-```{r}
+```{r data2-4}
 total_data = full_join(data, songs_scaled,by = c("track_id_clean" = "track_id"))
 ```
 
 Now that we have a lot of numeric data lets run a new model to see whether it improved our predictions.
-```{r}
+```{r data2-5}
 #This is a faster way to get the formula term for glm so you don't have to write it out 
 ##remove potentiql rsponse variables
 temp_data = subset(total_data,select=-c(not_skipped,skip_1,skip_2,skip_3))
@@ -174,10 +174,10 @@ test_numeric = total_data[indx,]
 glm_numeric = glm(fla,family = binomial(),data = train_numeric)
 p_numeric = predict(glm_numeric,newdata = test_numeric,type='response')
 ```
-```{r}
+```{r data2-6}
 p_numeric_tf = p_numeric > .5
 frame_numeric = tibble(true=test_numeric$not_skipped,pred=p_numeric_tf)
-conf_mat_numeric = (frame %>% group_by(true,pred) %>% count())$n %>% matrix(ncol = 2,nrow=2,dimnames = list(c('True','False'),c('True','False')))
+conf_mat_numeric = (frame %>% group_by(true,pred) %>% count())$freq%>% matrix(ncol = 2,nrow=2,dimnames = list(c('True','False'),c('True','False')))
 conf_mat_numeric
 
 rocr_numeric = prediction(p_numeric,test_numeric$not_skipped)
@@ -189,7 +189,7 @@ auc_numeric = auc_obj_numeric@y.values[[1]]
 auc_numeric
 ```
 We can see that adding this data actually made our model get worse. Adding data that is not correlated with your desired prediction variable can cause the model to cometo erroneous conclusions. By accessing the $coefficients for your glm you can see how much each feature effects our prediction.
-```{r}
+```{r data2-7}
 glm_numeric$coefficients
 ```
 So, how do we know what data to use and not to use? One way is to just keep testing the model with different combinations of variables and see which one is best, but..... there's not much math to back up that approach and it can be very time consuming. Luckily, there are some slight changes to the logistic regression model to help us solve this problem.
@@ -212,7 +212,7 @@ glmnet notes:
 
 In terms of part 2 and 3 we are lucky in that R has a built in function that does most of it for us called model.matrix. Just load the formula we created along with the data frame and it outputs a correctly formatted X matrix. Then you just have to separate the Y column off the original and youre good to go.
 
-```{r}
+```{r pmod1}
 X_lasso = model.matrix(fla, data = total_data)
 Y_lasso = total_data$not_skipped
 #Split test/train
@@ -223,18 +223,18 @@ Y_lasso_test = Y_lasso[indx]
 Y_lasso_train = Y_lasso[-indx]
 ```
 Now lets run cv.glmnet, which uses n-fold cross validation to sort the ]\lambda values by a specified metric. We'll use auc since that's one of the evaluation metrics that we've created. For this example I've deciced to use lasso regression but you are welcome to choose a different alpha value to see how it effects the results.
-```{r}
+```{r pmod2}
 library(glmnet)
 lasso = cv.glmnet(X_lasso_train,Y_lasso_train,type.measure = 'auc',alpha=1,family='binomial')
 ```
 Now, that this is done we can check the beta values and see what variables are wothwhile to keep.
-```{r}
+```{r pmod3}
 coefs = coef.glmnet(lasso,s=c(lasso$lambda.min))
 coefs
 ```
 We can now see that beat_strength, bounciness, danceability, dyn_range_mean, energy, loudness, organism, speechiness, valence and sevral acoustic vectors have coefficients of effectively 0.
 So, we can remove them. However, lets first check our evaluation metrics and see if lasso has improved our model at all. Instead of manually calculating all of our evaluation metrics again, glmnet has some built-in functions to do that for us.
-```{r}
+```{r pmod3}
 confusion.glmnet(lasso,newx=X_lasso_test,newy = Y_lasso_test)
 measure_lasso = assess.glmnet(lasso,newx=X_lasso_test,newy = Y_lasso_test)
 measure_lasso$auc[[1]]
@@ -243,7 +243,7 @@ Unfortunately, It does not seem to have changed our metrics much, but it at leas
 
 ## Data Cleaning pt3: Categorical Variables
 AS I mentioned early on, most models cannot incorporate text as data. However, there is a way to do this if you interpret a text column as a category with a number of subcategories. In R the data type factor was created to account for this categorical data. If a category has N subcategories/levels we can convert them into N-1 True/False values (also called dummy variables) through one-hot encoding. Our friend from earlier model.matrix has built-in functionality for factor encoding. Going back to the formula we used earlier we can add in our categorical variables with a '- 1' after them to convert them into one-hot format. You do however need to be smart about what you convert. If you look at the track_id column you might notice that there are over 50,000 levels. This would mean adding over 50,000 extra columns onto our data sets, which would be enormously computationally expensive. Thus I am omitting track_id, session_id and date (along with the previously omitted skip1-3s) from consideration. 
-```{r}
+```{r data3-1}
 temp_data2 = subset(total_data,select=-c(not_skipped,skip_1,skip_2,skip_3,session_id,track_id_clean,date))
 
 cl2 = sapply(temp_data2, class)
@@ -256,7 +256,7 @@ fla_cat = as.formula(paste(c('~ ',f_cat),collapse = '',sep=''))
 X_cat = model.matrix(fla_cat,data=total_data)
 ```
 Now with those categoricals converted lets see how they affect our predictions!
-```{r}
+```{r data3-2}
 X_cat_test = X_cat[indx,]
 X_cat_train = X_cat[-indx,]
 Y_cat_test = total_data$not_skipped[indx]
@@ -264,13 +264,13 @@ Y_cat_train = total_data$not_skipped[-indx]
 
 lasso_cat = cv.glmnet(X_cat_train,Y_cat_train,type.measure = 'auc',alpha=1,family='binomial')
 ```
-```{r}
+```{r data3-3}
 confusion.glmnet(lasso_cat,newx=X_cat_test,newy = Y_cat_test)
 measure_lasso = assess.glmnet(lasso_cat,newx=X_cat_test,newy = Y_cat_test)
 measure_lasso$auc[[1]]
 ```
 Based on the very high AUC score we can see that this categorical data drastically improved our model. Let's check the coefficients and see which variables did the most work and which ones we can take out. 
-```{r}
+```{r data3-4}
 cat_coefs = coef.glmnet(lasso_cat,s=c(lasso_cat$lambda.min))
 cat_coefs
 ```
@@ -308,16 +308,17 @@ knitr::include_graphics('skip.png')
 ```
 Given that these all give information about the same thing we can more or less consider these as dummy variables for a single categorical column with 5 levels. If we look at the possible combinations of these 4 variables we see that there are 6 categories but one of them has only one observation. 
 ```{r}
-total_data %>% group_by(skip_1,skip_2,skip_3,not_skipped) %>% count()
+library(dplyr)
+as.data.frame(total_data) %>% dplyr::group_by(skip_1,skip_2,skip_3,not_skipped) %>% dplyr::count()
 ```
 If we consider the possibility that this single observation is an error it would support my assertion that these are analogs to dummy variables. Our next task will be to make model to predict this 5 level categorical. Thus, the first task is to create a new column to represent that.
 
 ```{r}
 ## First drop the error column 
 dim(total_data)
-total_data2 = total_data %>% filter(!(skip_2==TRUE & total_data$skip_3==FALSE))
+total_data2 = total_data %>% dplyr::filter(!(skip_2==TRUE & total_data$skip_3==FALSE))
 dim(total_data2)
-total_data2 %>% group_by(skip_1,skip_2,skip_3,not_skipped) %>% count()
+total_data2 %>% dplyr::group_by(skip_1,skip_2,skip_3,not_skipped) %>% dplyr::count()
 listen_time = rep('',length(total_data2$skip_1))
 for (i in 1:length(listen_time)) {
   if(total_data2$not_skipped[i]){
@@ -334,7 +335,7 @@ for (i in 1:length(listen_time)) {
 }
 total_data2$listen_time = listen_time
 
-total_data2 %>% group_by(skip_1,skip_2,skip_3,not_skipped,listen_time) %>% count()
+total_data2 %>% dplyr::group_by(skip_1,skip_2,skip_3,not_skipped,listen_time) %>% dplyr::count()
 ```
 With this accomplished we need consider what tools we can use to model this. There are many ways to go about a multiple classification problem. One is to do one-vs.-rest modeling where you fit a logistic function to each category and then classify that observation as whichever class had the highest predicted probability. This is also known as Multinomial Logistic Regression, and once again glmnet has a function for this. All you have to do is change the family parameter on your glmnet model from 'binomial' to 'multinomial'. (Note: Because AUC relies on having True positives and False positives, it no longer makes sense in a multi-class setting and can no longer be applied)
 
@@ -369,12 +370,27 @@ listen_conf
 ```{r}
 # The model takes a very long time to run so a screenshot of the results was taken to allow for faster knitting
 knitr::include_graphics('conf.png')
+```
+```{r,eval=FALSE}
+Full_precision1 = listen_conf[1,1]/sum(listen_conf[,1])
+
+long_precision1 = listen_conf[2,2]/sum(listen_conf[,2])
+
+med_precision1 = listen_conf[3,3]/sum(listen_conf[,3])
+
+short_precision1 = listen_conf[4,4]/sum(listen_conf[,4])
+
+print(list(full=Full_precision1,long= long_precision1,med = med_precision1, short= short_precision1))
+
+```
+```{r}
+knitr::include_graphics('prec.png')
 
 ```
 Based on the confusion matrix this model does reasonably well in 3 of the 5 categories. Med is quite weak with most of the true Med's being predicted as either short or long and the unkown category performs teribly. Unknown is only predicted as the most likely category  once. This suggests a number of possibilities. First, that there is not enough Unkown classifications in the data for the model to develop "confidence" in predicting that class. Another possibility is that these are simply errors in the data collection and they should actually be in one of the other classes. If either of these are true it makes some sense to remove that data for now and restest the model without it
 
 ```{r}
-total_data3 = total_data2 %>% filter(listen_time!='Unknown')
+total_data3 = total_data2 %>% dplyr::filter(listen_time!='Unknown')
 temp_data_listen3 = subset(total_data3,select=-c(not_skipped,skip_1,skip_2,skip_3,session_id,track_id_clean,date,listen_time))
 
 cl_listen3 = sapply(temp_data_listen3, class)
@@ -398,9 +414,25 @@ lasso_listen3 = cv.glmnet(X_listen_train3,Y_listen_train3,family='multinomial',a
 listen_conf3 = confusion.glmnet(lasso_listen3,newx = X_listen_test3,newy=Y_listen_test3)
 listen_conf3
 ```
-```{r}
+```{r,include=FALSE}
 # The model takes a very long time to run so a screenshot of the results was taken to allow for faster knitting
 knitr::include_graphics('conf2.png')
+
+```
+```{r,eval=FALSE}
+Full_precision2 = listen_conf3[1,1]/sum(listen_conf3[,1])
+
+long_precision2 = listen_conf3[2,2]/sum(listen_conf3[,2])
+
+med_precision2 = listen_conf3[3,3]/sum(listen_conf3[,3])
+
+short_precision2 = listen_conf3[4,4]/sum(listen_conf3[,4])
+
+print(list(full=Full_precision2,long= long_precision2,med = med_precision2, short= short_precision2))
+```
+```{r,include=FALSE}
+# The model takes a very long time to run so a screenshot of the results was taken to allow for faster knitting
+knitr::include_graphics('prec2.png')
 
 ```
 Even having dropped the unkowns the results only improved marginally. But we've incorporated pretty much all of the data that was given to us, so where do we go from here? One option is to test out the same model but with different alpha values. Another is to try out other types of models like Discriminant Analysis or Naive Bayes. A third option is to change our perspective on the data.
@@ -419,7 +451,6 @@ The dataset has 4 boolean values corresponding to whether a track was played ver
 
 ```{r import sts files, include=FALSE}
 library(tidyr)
-library(plyr)
 library(seqHMM)
 library(TraMineR)
 library(RColorBrewer)
@@ -451,7 +482,7 @@ decade_sequence <- seqdef(year, var = 2:21, cpal = sequential_hcl(7,"SunsetDark"
 ```
 Note that year_sequences.csv was pre-processed using the seqformat() function to convert the data from SPELL format to the STS format that **TraMineR** expects. SPELL format uses multiple rows for every obsservation, where each row is a step in that observation's sequence. STS format has one row per observation and represents each step as a column attribute. **TraMineR** and **seqHMM** are also specific to discrete state sequences. Continuous variables representing acoustic track features, such as "beat-strength", "energy", and "dance-ability" were converted to discrete scores by first normalizing them, then multiplying by 10 and rounding to the nearest integer. Finally, we converted release years to release decades to reduce the number of states and enhance visual interpretability of the plots. 
 
-```{r define sequences}
+```{r define sequences,echo=FALSE,message=FALSE}
 skip_sequence <- seqdef(skip, var = 2:21, states = c("appload","backbtn","clickrow","endplay","fwdbtn","logout","remote","no skip"),alphabet = c("1", "2", "3", "4", "5", "6", "7","no_skip"), cpal = diverge_hcl(8,"Tropic"))
 context_sequence <- seqdef(context, var = 2:21)
 dance_sequence <- seqdef(dance, var = 2:21, cpal = diverge_hcl(61,"Blue-Red"))
@@ -552,7 +583,81 @@ ssplot(skip_fit$model, plots = "hidden.paths", type = "I")
 
 Mixture Markov models can be used to cluster entire sequences, rather than individual states. **seqHMM** implements clustering as a special case of MHMMs where the only hidden state is class (*see*: Helske et al.). We fit such a model below using multiple channels and covariates, which can be incorporated into prior probabilities during computation. 
 
+## Time Series modeling
 
+Now that we've analyzed this data as a sequence we know that there are some features that definitely seem to affect each other over time. For simplicity I've decided to only add in one of these: listen_time and to only use lag-1. Additionally for the first states in a sequence I will assume that they have the same lag_listen_time state as their listen_time
+
+```{r time series}
+dim(total_data2)
+total_data2 %>% dplyr::group_by(session_position) %>% dplyr::count()
+lag1 = tibble(session_id = total_data2$session_id,
+              session_position = total_data2$session_position,
+              lag_listen_time = total_data2$listen_time)
+dim(lag1)
+sum((lag1 %>% dplyr::group_by(session_id,session_position) %>% dplyr::count())$n > 1)
+lag1$session_position = lag1$session_position+1
+sum((lag1 %>% dplyr::group_by(session_id,session_position) %>% dplyr::count())$n > 1)
+dim(lag1)
+
+total_data4 = left_join(total_data2,lag1,by=c('session_id','session_position'))
+dim(total_data4)
+ 
+for(i in 1:dim(total_data4)[1]){
+  if(is.na(total_data4$lag_listen_time[i])){
+    total_data4$lag_listen_time[i] = total_data4$listen_time[i]
+  }
+}
+##to prove this worked
+sum((total_data4 %>% dplyr::group_by(session_position) %>% dplyr::count())$n == (total_data4 %>% dplyr::group_by(session_position) %>% dplyr::count())$n)
+total_data4$lag_listen_time = as.factor(total_data4$lag_listen_time)
+```
+```{r}
+temp_data_listen4 = subset(total_data4,select=-c(not_skipped,skip_1,skip_2,skip_3,session_id,track_id_clean,date,listen_time))
+
+cl_listen4 = sapply(temp_data_listen4, class)
+ps_listen4 = sapply(cl_listen4, function(x){
+  return(ifelse(x=='factor','-1',''))
+})
+f_listen4 =  paste(colnames(temp_data_listen4),ps_listen4,collapse = " + ",sep = '')
+fla_listen4 = as.formula(paste(c('~ ',f_listen4),collapse = '',sep=''))
+#>>>>>>>>>>>>>
+X_listen4 = model.matrix(fla_listen4,data=total_data4)
+
+indx_listen4 = sample(length(total_data4$listen_time),length(total_data4$listen_time)%/%10)
+X_listen_train4 = X_listen4[-indx_listen4,]
+X_listen_test4 = X_listen4[indx_listen4,]
+Y_listen_train4 = total_data4$listen_time[-indx_listen4]
+Y_listen_test4 = total_data4$listen_time[indx_listen4]
+```
+```{r,eval=FALSE}
+time_series = cv.glmnet(X_listen_train4,Y_listen_train4,family='multinomial',alpha=1)
+```
+```{r,eval=FALSE}
+time_series_conf = confusion.glmnet(time_series,newx = X_listen_test4,newy=Y_listen_test4)
+time_series_conf
+```
+```{r,include=FALSE}
+# The model takes a very long time to run so a screenshot of the results was taken to allow for faster knitting
+knitr::include_graphics('conf3.png')
+
+```
+```{r,eval=FALSE}
+Full_precision = time_series_conf[1,1]/sum(time_series_conf[,1])
+
+long_precision = time_series_conf[2,2]/sum(time_series_conf[,2])
+
+med_precision = time_series_conf[3,3]/sum(time_series_conf[,3])
+
+short_precision = time_series_conf[4,4]/sum(time_series_conf[,4])
+
+print(list(full=Full_precision,long= long_precision,med = med_precision, short= short_precision))
+```
+```{r,include=FALSE}
+# The model takes a very long time to run so a screenshot of the results was taken to allow for faster knitting
+knitr::include_graphics('prec3.png')
+
+```
+You can see here that the precision for both med and long increase as well as the overall accuracy. The short precision dropped slightly and the Full precision was more or less unchanged. You can imagine that by adding in more sequence terms for listen_time as well as for other categoires we could further increase our prediction accuracy.
 # References
 *Brost, Brian, Rishabh Mehrotra, and Tristan Jehan. “The Music Streaming Sessions Dataset.” ArXiv:1901.09851 [Cs], December 31, 2018. http://arxiv.org/abs/1901.09851.
 *Cheng, Zhiyong, Jialie Shen, Lei Zhu, Mohan Kankanhalli, and Liqiang Nie. “Exploiting Music Play Sequence for Music Recommendation.” In Proceedings of the Twenty-Sixth International Joint Conference on Artificial Intelligence, 3654–60. Melbourne, Australia: International Joint Conferences on Artificial Intelligence Organization, 2017. https://doi.org/10.24963/ijcai.2017/511.
