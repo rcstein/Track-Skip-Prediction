@@ -340,12 +340,54 @@ X_listen_train = X_listen[-indx_listen,]
 X_listen_test = X_listen[indx_listen,]
 Y_listen_train = total_data2$listen_time[-indx_listen]
 Y_listen_test = total_data2$listen_time[indx_listen]
-
+```
+Warning: Training this model may take a long time.
+```{r,eval=FALSE}
 lasso_listen = cv.glmnet(X_listen_train,Y_listen_train,family='multinomial',alpha=1)
 ```
-```{r}
+
+```{r,eval=FALSE}
 listen_conf = confusion.glmnet(lasso_listen,newx = X_listen_test,newy=Y_listen_test)
 listen_conf
 ```
+```{r}
+# The model takes a very long time to run so a screenshot of the results was taken to allow for faster knitting
+knitr::include_graphics('conf.png')
+
+```
+Based on the confusion matrix this model does reasonably well, in 3 of the 5 categories. Med is quite weak with most of the true Med's being predicted as either short or long. However, the unkown category performs teribly. Unknown is only the most likely category  once. This suggests a number of possibilities. First, that there is not enough Unkown classifications in the data for the model to develop "confidence" in predicting that class. Another possibility is that these are simply errors in the data collection and they should actually be in one of the other classes. Regardless, I will test the model without the Unkowns and then re-evaluate it.
+
+```{r}
+total_data3 = total_data2 %>% filter(listen_time!='Unknown')
+temp_data_listen3 = subset(total_data3,select=-c(not_skipped,skip_1,skip_2,skip_3,session_id,track_id_clean,date,listen_time))
+
+cl_listen3 = sapply(temp_data_listen3, class)
+ps_listen3 = sapply(cl_listen3, function(x){
+  return(ifelse(x=='factor','-1',''))
+})
+f_listen3 =  paste(colnames(temp_data_listen3),ps_listen3,collapse = " + ",sep = '')
+fla_listen3 = as.formula(paste(c('~ ',f_listen3),collapse = '',sep=''))
+#>>>>>>>>>>>>>
+X_listen3 = model.matrix(fla_listen3,data=total_data3)
+
+indx_listen3 = sample(length(total_data3$listen_time),length(total_data3$listen_time)%/%10)
+X_listen_train3 = X_listen3[-indx_listen3,]
+X_listen_test3 = X_listen3[indx_listen3,]
+Y_listen_train3 = as.factor(total_data3$listen_time[-indx_listen3])
+Y_listen_test3 = as.factor(total_data3$listen_time[indx_listen3])
+
+```
+```{r,eval=FALSE}
+lasso_listen3 = cv.glmnet(X_listen_train3,Y_listen_train3,family='multinomial',alpha=1)
+listen_conf3 = confusion.glmnet(lasso_listen3,newx = X_listen_test3,newy=Y_listen_test3)
+listen_conf3
+```
+```{r}
+# The model takes a very long time to run so a screenshot of the results was taken to allow for faster knitting
+knitr::include_graphics('conf2.png')
+
+```
+Even having dropped the unkowns the results only improved marginally. But we've incorporated pretty much all of the data that was given to us, so where do we go from here? One option is to test out the same model but with a different alpha different alpha values. Another is to try out other types of models like Discriminant Analysis or Naive Bayes. A third option is to change our perspective on the data.  
+
 
 
