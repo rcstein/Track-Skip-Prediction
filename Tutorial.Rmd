@@ -10,6 +10,7 @@ Machine Learning can be a useful tool for many sorts of problems. One of the mos
 ##Data Loading and Cleaning pt. 1
 The first thing to do is to load the data which in this case can be done using the read.csv() function. You can then view the loaded data using View() and you can see the structure of the data using str().
 ```{r}
+set.seed(10201998)
 #assuming the dcsv files are in your rstudio project folder
 data <- read.csv("log_mini.csv")
 str(data)
@@ -107,24 +108,145 @@ auc_obj = performance(rocr,'auc')
 auc = auc_obj@y.values[[1]]
 auc
 ```
-Again this shows that the model is pretty bad. ROC/AUC is fairly broadly applicable, however, your model must produce probabilities and not just categorizations. The last model evaluation technique 
+Again this shows that the model is pretty bad. ROC/AUC is fairly broadly applicable, however, your model must produce probabilities and not just categorizations. Regardless of the metric our initial model is not very good. So, the next step is step is to try incorporate better/more data. Luckily, The provided data set includes a second table with metrics on all of the songs.
 
-## Categorical Variables
-Regardless of the metric our initial model is not very good. So, the next step is step is to try incorporate better/more data. If you look at our initial data set there are number of columns with text data that we did not incorporate into the model. If we consider that text data as categories we can incorporate them into our model. In R the data type factor was created to account for categorical data. If a category has N subcategories/levels through One Hot encoding you can convert them into N-1 True/False values (also called dummy variables). R has built-in function to handle this called model.matrix(). Similarly to the glm formula you set the parameters to the data and a formula. To encode a categorical variable with One Hot and a '-1' after that column name in the formula. 
+
+### Data Cleaning pt2: Continuous variables and joining
+```{r}
+songs = read.csv('tf_mini.csv')
+str(songs)
+```
+Looking at this new data you'll notice its mostly numeric data there are however some things don't necessarily make much sense as numeric data like time_signature and key. So, first off we'll change those to be factors.
+```{r}
+songs$key = as.factor(songs$key)
+songs$time_signature = as.factor(songs$time_signature)
+```
+Now, the rest of the numeric data seems to make sense, but there is one more thing to do before we merge the two tables: standardizing our variables. In statistics it's common practice to standardize numeric data because it converts those numbers into a measure of how far above/below the mean a number is. In R the function scale() can do this for us automatically. We'll also usd the rapply() function to allow us to scale all of the numeric columns in one command. 
+```{r}
+songs$duration = as.numeric(songs$duration)
+songs_scaled = rapply(songs, scale,c('numeric'),how='replace')
+```
+Now we can join the two tables together. The full_join() function will allow us to link all of the play data from the first table with data about the song that is being played from the songs table. 
+
+```{r}
+total_data = full_join(data, songs_scaled,by = c("track_id_clean" = "track_id"))
+```
+
+Now that we have a lot of numeric data lets run a new model to see whether it improved our predictions.
+```{r}
+#This is a faster way to get the formula term for glm so you don't have to write it out 
+##remove potentiql rsponse variables
+temp_data = subset(total_data,select=-c(not_skipped,skip_1,skip_2,skip_3))
+##grab class types
+classes = sapply(temp_data,class)
+##add numeri/logical/int column names to list
+columns = c()
+for( i in 1:length(classes)){
+  temp = classes[i]
+  if(temp =='int'|temp=='logical'|temp=='numeric'|temp=='matrix'){
+    columns = c(columns,colnames(temp_data)[i])
+  }
+}
+f = paste(columns,sep='',collapse = ' + ')
+fla = as.formula (paste(c('not_skipped ~ ',f),collapse =''))
+#Don't forget to split the data into test/train sets
+
+train_numeric = total_data[-indx,]
+test_numeric = total_data[indx,]
+
+
+glm_numeric = glm(formula,family = binomial(),data = train_numeric)
+p_numeric = predict(glm_numeric,newdata = test_numeric,type='response')
+```
+```{r}
+p_numeric_tf = p_numeric > .5
+frame_numeric = tibble(true=test_numeric$not_skipped,pred=p_numeric_tf)
+conf_mat_numeric = (frame %>% group_by(true,pred) %>% count())$n %>% matrix(ncol = 2,nrow=2,dimnames = list(c('True','False'),c('True','False')))
+conf_mat_numeric
+
+rocr_numeric = prediction(p_numeric,test_numeric$not_skipped)
+roc_numeric = performance(rocr_numeric,'tpr','fpr')
+plot(roc_numeric)
+
+auc_obj_numeric = performance(rocr_numeric,'auc')
+auc_numeric = auc_obj_numeric@y.values[[1]]
+auc_numeric
+```
+We can see that adding this data actually made our model get worse. Adding data that is not correlated with your desired prediction variable can cause the model to cometo erroneous conclusions. By accessing the $coefficients for your glm you can see how much each feature effects our prediction.
+```{r}
+glm_numeric$coefficients
+```
+So, how do we know what data to use and not to use? One way is to just keep testing the model with different combinations of variables and see which one is best, but..... there's not much math to back up that approach and it can be very time consuming. Luckily, there are some slight changes to the logistic regression model to help us solve this problem.
+
+## Penalized Models
+
+Penalized Regression is an improvement upon general logistic regression, that forces regression parameters to shrink and, if the data has no effect on the model prediction then the coefficient will shrink to 0. There are 3 main types: Lasso, Ridge, and Elastic. The general formula for each coefficient is:
+$$ \hat \beta = arg_\beta min\{ l(\beta) + \lambda P(\beta) \} $$
+You'll notice that there is the term \lambda term in this equation. This value is generally found through a grid search and then the \lambda with the best results is chosen
+
+The glmnet package will allow us to easily use these methods. 
+
+glmnet notes:
+
+1) In the glmnet() function just add the parameter alpha = 0 for Ridge, alpha = 1 for Lasso and alpha = [some value between 0 and 1] for Elastic.
+
+2) glmnet functions do not take a formula parameter, you have to manually divide up your data frame X(predictor columns) and Y(predicted variable)
+
+3)glmnets do not like dataframes so you must convert them to matricies before putting them into the function.
+
+In terms of part 2 and 3 we are lucky in that R has a built in function that does most of it for us called model.matrix. Just load the formula we created along with the data frame and it outputs a correctly formatted X matrix. Then you just have to separate the Y column off the original and youre good to go.
+
+```{r}
+X_lasso = model.matrix(formula, data = total_data)
+Y_lasso = total_data$not_skipped
+#Split test/train
+
+X_lasso_test = X_lasso[indx,]
+X_lasso_train = X_lasso[-indx,]
+Y_lasso_test = Y_lasso[indx]
+Y_lasso_train = Y_lasso[-indx]
+```
+Now lets run cv.glmnet, which uses n-fold cross validation to sort the ]\lambda values by a specified metric. We'll use auc since that's one of the evaluation metrics that we've created. For this example I've deciced to use lasso regression but you are welcome to choose a different alpha value to see how it effects the results.
+```{r}
+lasso = cv.glmnet(X_lasso_train,Y_lasso_train,type.measure = 'auc',alpha=1,family='binomial')
+```
+Now, that this is done we can check the beta values and see what variables are wothwhile to keep.
+```{r}
+coefs = coef.glmnet(lasso,s=c(lasso$lambda.min))
+coefs
+```
+We can now see that beat_strength, bounciness, danceability, dyn_range_mean, energy, loudness, organism, speechiness, valence and sevral acoustic vectors have coefficients of effectively 0.
+So, we can remove them. However, lets first check our evaluation metrics and see if lasso has improved our model at all. Instead of manually calculating all of our evaluation metrics again, glmnet has some built-in functions to do that for us.
+```{r}
+confusion.glmnet(lasso,newx=X_lasso_train,newy = Y_lasso_train)
+measure_lasso = assess.glmnet(lasso,newx=X_lasso_train,newy = Y_lasso_train)
+measure_lasso$auc
+```
+Unfortunately, It does not seem to have changed our metrics much, but it at least informs us about what data seems unnecessary.
+
+## Data Cleaning pt3: Categorical Variables
+ If you look at our initial data set there are number of columns with text data that we did not incorporate into the model. If we consider that text data as categories we can incorporate them into our model. In R the data type factor was created to account for categorical data. If a category has N subcategories/levels through One Hot encoding you can convert them into N-1 True/False values (also called dummy variables). R has built-in function to handle this called model.matrix(). Similarly to the glm formula you set the parameters to the data and a formula. To encode a categorical variable with One Hot and a '-1' after that column name in the formula. 
 
 Looking back at the data you'll notice that there are over 50,000 levels for track and 1,000 levels for session_id. This would result in far too many columns so I am going to omit those from the equation along with the previously ommitted skip columns.
 ```{r}
-#Drop skip1-3 from data
-data_reduced = subset(data,select=-c(not_skipped,skip_1,skip_2,skip_3,session_id,track_id_clean))
-#This is a fast way to create the formula string including one-hot encoding for the model.matrix function
-cl = sapply(data_reduced, class)
-ps = sapply(cl, function(x){
-  return(ifelse(x=='factor'||x=='logical','-1',''))
-})
-f =  paste(colnames(data_reduced),ps,collapse = " + ")
-form = as.formula(paste(c('not_skipped ~ ',f),collapse = ''))
-#>>>>>>>>>>>>>
-X = model.matrix(form,data=data)
-```
+temp = subset(total_data,select=-c(not_skipped,skip_1,skip_2,skip_3,session_id,track_id_clean,date))
 
+cl = sapply(temp, class)
+ps = sapply(cl, function(x){
+  return(ifelse(x=='factor','-1',''))
+})
+f_tot =  paste(colnames(temp),ps,collapse = " + ",sep = '')
+form_tot = as.formula(paste(c('~ ',f_tot),collapse = '',sep=''))
+#>>>>>>>>>>>>>
+X_tot = as.data.frame(model.matrix(form_tot,data=total_data))
+```
+With that done we can now make predictions with glmnet!
+```{r}
+X_tot_test = X_tot[indx,]
+X_tot_train = X_tot[-indx,]
+Y_tot_test = total_data$skip_1[indx]
+Y_tot_train = total_data$skip_1[-indx]
+
+#lasso = cv.glmnet(as.matrix(X_tot_train),Y_tot_train,family = 'binomial',alpha = 1)
+```
 

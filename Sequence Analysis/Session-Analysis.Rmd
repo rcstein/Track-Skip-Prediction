@@ -102,7 +102,7 @@ end_sequence <- seqdef(end, var = 2:21)
 
 ```{r, include=FALSE}
 skip_sequence <- seqdef(skip, var = 2:21, alphabet = c("short", "med", "long", "full"), cpal = c("firebrick2","darkorange1", "gold1", "forestgreen"))
-decade_sequence <- seqdef(year, var = 2:21, alphabet = years, cpal = sequential_hcl(7,"SunsetDark"))
+decade_sequence <- seqdef(year, var = 2:21, cpal = sequential_hcl(7,"SunsetDark"))
 dance_sequence <- seqdef(dance, var = 2:21, cpal = diverge_hcl(61,"Blue-Red"))
 beat_sequence <- seqdef(beat, var = 2:21, cpal = diverge_hcl(62,"Blue-Red"))
 bounce_sequence <- seqdef(bounce, var = 2:21, cpal = diverge_hcl(55,"Blue-Red"))

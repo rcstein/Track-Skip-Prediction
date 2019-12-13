@@ -155,7 +155,7 @@ acc_frame_lasso = tibble(pred=pred_tf_lasso,true=Y_test)
 conf_mat_lasso = (acc_frame_lasso %>% group_by(true,pred) %>% count())$n %>% matrix(ncol = 2,nrow=2)
 precision_lasso= c(conf_mat_lasso[1,1]/sum(conf_mat_lasso[,1]),conf_mat_lasso[2,2]/sum(conf_mat_lasso[,2]))
 recall_lasso = c(conf_mat_lasso[1,1]/sum(conf_mat_lasso[1,]),conf_mat_lasso[2,2]/sum(conf_mat_lasso[2,]))
-acc_mat_lasso = pred_tf_lasso == Y_test
+acc_mat_lasso = pred_tf_lasso == Y_test 
 acc_lasso = sum(acc_mat_lasso)/length(acc_mat_lasso) * 100
 print(list(conf_mat=conf_mat_lasso,precision=precision_lasso,recall=recall_lasso,accuracy=acc_lasso,lambda=glm_lasso$lambda.min))
 
