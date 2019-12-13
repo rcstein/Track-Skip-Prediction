@@ -218,35 +218,38 @@ coefs
 We can now see that beat_strength, bounciness, danceability, dyn_range_mean, energy, loudness, organism, speechiness, valence and sevral acoustic vectors have coefficients of effectively 0.
 So, we can remove them. However, lets first check our evaluation metrics and see if lasso has improved our model at all. Instead of manually calculating all of our evaluation metrics again, glmnet has some built-in functions to do that for us.
 ```{r}
-confusion.glmnet(lasso,newx=X_lasso_train,newy = Y_lasso_train)
-measure_lasso = assess.glmnet(lasso,newx=X_lasso_train,newy = Y_lasso_train)
-measure_lasso$auc
+confusion.glmnet(lasso,newx=X_lasso_test,newy = Y_lasso_test)
+measure_lasso = assess.glmnet(lasso,newx=X_lasso_test,newy = Y_lasso_test)
+measure_lasso$auc[[1]]
 ```
-Unfortunately, It does not seem to have changed our metrics much, but it at least informs us about what data seems unnecessary.
+Unfortunately, It does not seem to have changed our metrics much, but it at least informs us about what data seems unnecessary. There is still more data to investigate however so I will hold off on that for the moment.
 
 ## Data Cleaning pt3: Categorical Variables
- If you look at our initial data set there are number of columns with text data that we did not incorporate into the model. If we consider that text data as categories we can incorporate them into our model. In R the data type factor was created to account for categorical data. If a category has N subcategories/levels through One Hot encoding you can convert them into N-1 True/False values (also called dummy variables). R has built-in function to handle this called model.matrix(). Similarly to the glm formula you set the parameters to the data and a formula. To encode a categorical variable with One Hot and a '-1' after that column name in the formula. 
-
-Looking back at the data you'll notice that there are over 50,000 levels for track and 1,000 levels for session_id. This would result in far too many columns so I am going to omit those from the equation along with the previously ommitted skip columns.
+AS I mentioned early on, most models cannot incorporate text as data. However, there is a way to do this if you interpret a text column as a category with a number of subcategories. In R the data type factor was created to account for this categorical data. If a category has N subcategories/levels we can convert them into N-1 True/False values (also called dummy variables) through one-hot encoding. Our friend from earlier model.matrix has built-in functionality for factor encoding. Going back to the formula we used earlier we can add in our categorical variables with a '- 1' after them to convert them into one-hot format. You do however need to be smart about what you convert. If you look at the track_id column you might notice that there are over 50,000 levels. This would mean adding over 50,000 extra columns onto our data sets, which would be enormously computationally expensive. Thus I am omitting track_id, session_id and date (along with the previously omitted skip1-3s) from consideration. 
 ```{r}
-temp = subset(total_data,select=-c(not_skipped,skip_1,skip_2,skip_3,session_id,track_id_clean,date))
+temp_data2 = subset(total_data,select=-c(not_skipped,skip_1,skip_2,skip_3,session_id,track_id_clean,date))
 
-cl = sapply(temp, class)
-ps = sapply(cl, function(x){
+cl2 = sapply(temp_data2, class)
+ps2 = sapply(cl2, function(x){
   return(ifelse(x=='factor','-1',''))
 })
-f_tot =  paste(colnames(temp),ps,collapse = " + ",sep = '')
-form_tot = as.formula(paste(c('~ ',f_tot),collapse = '',sep=''))
+f_cat =  paste(colnames(temp),ps,collapse = " + ",sep = '')
+fla_cat = as.formula(paste(c('~ ',f_tot),collapse = '',sep=''))
 #>>>>>>>>>>>>>
-X_tot = as.data.frame(model.matrix(form_tot,data=total_data))
+X_cat = model.matrix(fla_cat,data=total_data)
 ```
-With that done we can now make predictions with glmnet!
+Now with those categoricals converted lets see how they affect our predictions!
 ```{r}
-X_tot_test = X_tot[indx,]
-X_tot_train = X_tot[-indx,]
-Y_tot_test = total_data$skip_1[indx]
-Y_tot_train = total_data$skip_1[-indx]
+X_cat_test = X_cat[indx,]
+X_cat_train = X_cat[-indx,]
+Y_cat_test = total_data$not_skipped[indx]
+Y_cat_train = total_data$not_skipped[-indx]
 
-#lasso = cv.glmnet(as.matrix(X_tot_train),Y_tot_train,family = 'binomial',alpha = 1)
+lasso_cat = cv.glmnet(X_cat_train,Y_cat_train,type.measure = 'auc',alpha=1,family='binomial')
+```
+```{r}
+confusion.glmnet(lasso_cat,newx=X_cat_test,newy = Y_cat_test)
+measure_lasso = assess.glmnet(lasso_cat,newx=X_cat_test,newy = Y_cat_test)
+measure_lasso$auc[[1]]
 ```
 
