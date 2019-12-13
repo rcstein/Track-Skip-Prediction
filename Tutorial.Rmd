@@ -2,8 +2,9 @@
 title: "Exploring Music Streaming Behavior With Regression and Sequence Analysis"
 author: "Rice Tyler and Becca Stein"
 date: "12/13/2019"
-output: html_document:
-  toc: true
+output: 
+  html_document:
+    toc: TRUE
 ---
 # Introduction
 
