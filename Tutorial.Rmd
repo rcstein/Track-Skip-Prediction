@@ -252,4 +252,42 @@ confusion.glmnet(lasso_cat,newx=X_cat_test,newy = Y_cat_test)
 measure_lasso = assess.glmnet(lasso_cat,newx=X_cat_test,newy = Y_cat_test)
 measure_lasso$auc[[1]]
 ```
+Based on the very high AUC score we can see that this categorical data drastically improved our model. Let's check the coefficients and see which variables did the most work and which ones we can take out. 
+```{r}
+cat_coefs = coef.glmnet(lasso_cat,s=c(lasso_cat$lambda.min))
+cat_coefs
+```
+Now lets drop those uneeded columns and recheck our predictions
+
+```{r}
+drop_ind = cat_coefs == 0 
+sum(drop_ind)
+drop = c()
+for(i in 1:length(cat_coefs@Dimnames[[1]])){
+  if(drop_ind[i]){
+    drop = c(drop,i-1)
+  }
+}
+X_cat_red = X_cat[,-drop]
+X_cat_red_test = X_cat_red[indx,]
+X_cat_red_train = X_cat_red[-indx,]
+Y_cat_red_test = total_data$not_skipped[indx]
+Y_cat_red_train = total_data$not_skipped[-indx]
+
+lasso_cat_red = cv.glmnet(X_cat_red_train,Y_cat_red_train,type.measure = 'auc',alpha=1,family='binomial')
+```
+
+```{r}
+confusion.glmnet(lasso_cat_red,newx=X_cat_red_test,newy = Y_cat_red_test)
+measure_red_lasso = assess.glmnet(lasso_cat_red,newx=X_cat_red_test,newy = Y_cat_red_test)
+measure_red_lasso$auc[[1]]
+```
+We Can see from this that despite the fact that we dropped 19 out of 74 variables there was essentially no change in performance. This is good because the more variables there are, the longer it takes to train/predict and the more likely we will start overfitting a model. 
+
+# Multiple Classification
+Now that we've succeeded in a relatively simple problem, let's try something more complex. If you read the data documentation you'll find the definitions for the different skip categories
+```{r,echo=FALSE}
+knitr::include_graphics('skip.png')
+```
+
 
