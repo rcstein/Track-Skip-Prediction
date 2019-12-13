@@ -336,7 +336,7 @@ total_data2$listen_time = listen_time
 
 total_data2 %>% group_by(skip_1,skip_2,skip_3,not_skipped,listen_time) %>% count()
 ```
-With this accomplished we need consider what tools we can use to model this. There are many ways to go about a multiple classification problem. One is to do one-vs.-rest modeling where you fit a logistic function to each category and then classify that observation as whichever class had the highest predicted probability. This is also known as Multinomial Logistic Regression, and once again glmnet has a function for this. All you have to do is change the family parameter on your glmnet model from 'binomial' to 'multinomial'. (Note: Because AUC relies on having True positives and False positives, it no longer makes sense in a multi-class setting and can no longer be applied)
+With this accomplished we need consider what modeling tools we can use. There are many ways to go about a multiple classification problem. One is to do one-vs.-rest modeling where you fit a logistic function to each category and then classify that observation as whichever class had the highest predicted probability. This is also known as Multinomial Logistic Regression, which glmnet handles. All you have to do is change the family parameter on your glmnet model from 'binomial' to 'multinomial'. (Note: Because AUC relies on having True positives and False positives, it no longer makes sense in a multi-class setting and can no longer be applied)
 
 ```{r}
 temp_data_listen = subset(total_data2,select=-c(not_skipped,skip_1,skip_2,skip_3,session_id,track_id_clean,date,listen_time))
@@ -371,7 +371,7 @@ listen_conf
 knitr::include_graphics('conf.png')
 
 ```
-Based on the confusion matrix this model does reasonably well in 3 of the 5 categories. Med is quite weak with most of the true Med's being predicted as either short or long and the unkown category performs teribly. Unknown is only predicted as the most likely category  once. This suggests a number of possibilities. First, that there is not enough Unkown classifications in the data for the model to develop "confidence" in predicting that class. Another possibility is that these are simply errors in the data collection and they should actually be in one of the other classes. If either of these are true it makes some sense to remove that data for now and restest the model without it
+Based on the confusion matrix this model does reasonably well in 3 of the 5 categories. Med is quite weak with most of the true Med's being predicted as either short or long and the unkown category performs teribly. Unknown is only predicted as the most likely category  once. This suggests a number of possibilities. First, that there are not enough Unkown classifications in the data for the model to develop "confidence" in predicting that class. Another possibility is that these are simply errors in the data collection and they should actually be in one of the other classes. If either of these are true it makes some sense to remove that data for now and restest the model without it.
 
 ```{r}
 total_data3 = total_data2 %>% filter(listen_time!='Unknown')
@@ -405,14 +405,13 @@ knitr::include_graphics('conf2.png')
 ```
 Even having dropped the unkowns the results only improved marginally. But we've incorporated pretty much all of the data that was given to us, so where do we go from here? One option is to test out the same model but with different alpha values. Another is to try out other types of models like Discriminant Analysis or Naive Bayes. A third option is to change our perspective on the data.
 
-# Sequence Analysis
-
 If we take into consideration that that each row contains a session_id and and session position tag we can see that these observations are actually sequential. When data is collected over time it can be influenced by trends over time. This is known as autocorrelation. One way of dealing with this is to say that the state of an observation in some sequence is influenced by previous observations in that sequence. This can be modeled using lag-N autocorrelation. This simply means that you include state of the observation N time steps before the current observation. Now, you may have noticed that as our models became more complex, it took drastically longer to train them. This means that with large models it becomes inefficient and computationally expensive to just try new things until they work. So, one way to cut down on this is to investigate and visualize potential directions before actually applying them to the model. Sequences and time-series naturally lend themselves to visualization because change over time is something that is easily understood graphically. In the next section we will explore some tools to help us understand potential time trends in our data before we try adding them into our models.
 
-## Visualization
-**TraMineR**, **seqHMM**, and sequence analysis in general, were designed for and have been primarily applied to sociological data such as life course analysis (*see*: Gabadinho et al.; Helske et al.). The assumption of the sociological domain is built into the packages to an extent: TraMineR requires start and end points to be specified for each sequence step, and accepts ages or calendar years as values (cite package docs). Thus, adapting it to listening session data required a bit of fudging, i.e., each session step is given an "age-range" from its position in the sequence to the next position in the sequence. For example, song 1 has a start point of 1 and an endpoint of 2. 
+# Sequence Analysis
 
-Various researchers have studied sequential patterns in music session listening behavior using other methods (*see*: Cheng et al.), but to the best of our knowledge this is the first application of Hidden Markov Models and the above-referenced R packages to the problem. 
+**TraMineR**, **seqHMM**, and sequence analysis in general, were designed for and have been primarily applied to sociological data such as life course analysis (*see*: Gabadinho et al.; Helske et al.). The assumption of the sociological domain is built into the packages to an extent: TraMineR requires start and end points to be specified for each sequence step, and accepts ages or calendar years as values (). Thus, adapting it to listening session data required a bit of fudging, i.e., each session step is given an "age-range" from its position in the sequence to the next position in the sequence. For example, song 1 has a start point of 1 and an endpoint of 2. 
+
+Sequential music listening behavior has been studied using other methods (*see*: Cheng et al.), but to the best of our knowledge this is the first application of Hidden Markov Models and the above-referenced R packages to the problem. 
 
 ### Additional pre-processing
 <<<<<<< HEAD
