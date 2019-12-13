@@ -1,9 +1,13 @@
 ---
-title: "An In Depth Guide To Categorization"
-author: "Rice Tyler"
-date: "12/11/2019"
-output: html_document
+title: "Exploring Music Streaming Behavior With Regression and Sequence Analysis"
+author: "Rice Tyler and Becca Stein"
+date: "12/13/2019"
+output: html_document:
+  toc: true
 ---
+### Introduction
+
+
 
 Machine Learning can be a useful tool for many sorts of problems. One of the most common type of problem is categorization. This tutorial will give an in-depth approach to solving these types of problems. For the purpose of this tutorial we will be using the spotify sequential skip prediction data set which can be found here {https://www.crowdai.org/challenges/spotify-sequential-skip-prediction-challenge}
 
@@ -289,5 +293,17 @@ Now that we've succeeded in a relatively simple problem, let's try something mor
 ```{r,echo=FALSE}
 knitr::include_graphics('skip.png')
 ```
+
+
+# References
+*Brost, Brian, Rishabh Mehrotra, and Tristan Jehan. “The Music Streaming Sessions Dataset.” ArXiv:1901.09851 [Cs], December 31, 2018. http://arxiv.org/abs/1901.09851.
+*Cheng, Zhiyong, Jialie Shen, Lei Zhu, Mohan Kankanhalli, and Liqiang Nie. “Exploiting Music Play Sequence for Music Recommendation.” In Proceedings of the Twenty-Sixth International Joint Conference on Artificial Intelligence, 3654–60. Melbourne, Australia: International Joint Conferences on Artificial Intelligence Organization, 2017. https://doi.org/10.24963/ijcai.2017/511.
+*“Deep Content-Based Music Recommendation,” n.d., 9.
+*Gabadinho, Alexis, Gilbert Ritschard, Matthias Studer, and Nicolas Muller. “Mining Sequence Data in R with the TraMineR Package: A User’s Guide.” University of Geneva, Switzerland, n.d. http://mephisto.unige.ch/traminer/.
+*“Get Audio Features for a Track.” Spotify, n.d. https://developer.spotify.com/documentation/web-api/reference/tracks/get-audio-features/.
+*Hansen, Christian, Casper Hansen, Stephen Alstrup, Jakob Grue Simonsen, and Christina Lioma. “Modelling Sequential Music Track Skips Using a Multi-RNN Approach.” ArXiv:1903.08408 [Cs], March 20, 2019. http://arxiv.org/abs/1903.08408.
+*Helske, Satu, and Jouni Helske. “Mixture Hidden Markov Models for Sequence Data: The SeqHMM Package in R.” Journal of Statistical Software 88, no. 3 (2019). https://doi.org/10.18637/jss.v088.i03.
+Smyth, Padhraic. “Clustering Sequences with Hidden Markov Models,” n.d., 7.
+
 
 
