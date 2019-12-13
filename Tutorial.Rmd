@@ -543,9 +543,8 @@ skip_model <- build_hmm(observations = skip_sequence, n_states = 4)
 skip_fit <- fit_model(skip_model)
 skip_fit$model
 ssplot(skip_fit$model, plots = "hidden.paths", type = "I")
-?build_lcm()
 ```
-State 4 seems to indicate non-skipping behavior while state 3 is associated with pressing the forward button. Based on the distribution, this may actually be a Markov Model, which is a special case of the HMM where the hidden states correspond perfectly with the observed states (i.e. there are no hidden states.)
+
 
 Mixture Markov models can be used to cluster entire sequences, rather than individual states. **seqHMM** implements clustering as a special case of MHMMs where the only hidden state is class (*see*: Helske et al.). We fit such a model below using multiple channels and covariates, which can be incorporated into prior probabilities during computation. 
 
@@ -558,7 +557,8 @@ Mixture Markov models can be used to cluster entire sequences, rather than indiv
 *“Get Audio Features for a Track.” Spotify, n.d. https://developer.spotify.com/documentation/web-api/reference/tracks/get-audio-features/.
 *Hansen, Christian, Casper Hansen, Stephen Alstrup, Jakob Grue Simonsen, and Christina Lioma. “Modelling Sequential Music Track Skips Using a Multi-RNN Approach.” ArXiv:1903.08408 [Cs], March 20, 2019. http://arxiv.org/abs/1903.08408.
 *Helske, Satu, and Jouni Helske. “Mixture Hidden Markov Models for Sequence Data: The SeqHMM Package in R.” Journal of Statistical Software 88, no. 3 (2019). https://doi.org/10.18637/jss.v088.i03.
-Smyth, Padhraic. “Clustering Sequences with Hidden Markov Models,” n.d., 7.
+*Porter, Michael. “Penalized Regression Lecture Notes: Ridge, Lasso, Elasticnet,” Fall 2019.
+*Smyth, Padhraic. “Clustering Sequences with Hidden Markov Models,” n.d., 7.
 
 
 
