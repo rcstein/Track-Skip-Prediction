@@ -155,7 +155,7 @@ train_numeric = total_data[-indx,]
 test_numeric = total_data[indx,]
 
 
-glm_numeric = glm(formula,family = binomial(),data = train_numeric)
+glm_numeric = glm(fla,family = binomial(),data = train_numeric)
 p_numeric = predict(glm_numeric,newdata = test_numeric,type='response')
 ```
 ```{r}
@@ -197,7 +197,7 @@ glmnet notes:
 In terms of part 2 and 3 we are lucky in that R has a built in function that does most of it for us called model.matrix. Just load the formula we created along with the data frame and it outputs a correctly formatted X matrix. Then you just have to separate the Y column off the original and youre good to go.
 
 ```{r}
-X_lasso = model.matrix(formula, data = total_data)
+X_lasso = model.matrix(fla, data = total_data)
 Y_lasso = total_data$not_skipped
 #Split test/train
 
@@ -208,6 +208,7 @@ Y_lasso_train = Y_lasso[-indx]
 ```
 Now lets run cv.glmnet, which uses n-fold cross validation to sort the ]\lambda values by a specified metric. We'll use auc since that's one of the evaluation metrics that we've created. For this example I've deciced to use lasso regression but you are welcome to choose a different alpha value to see how it effects the results.
 ```{r}
+library(glmnet)
 lasso = cv.glmnet(X_lasso_train,Y_lasso_train,type.measure = 'auc',alpha=1,family='binomial')
 ```
 Now, that this is done we can check the beta values and see what variables are wothwhile to keep.
@@ -233,8 +234,8 @@ cl2 = sapply(temp_data2, class)
 ps2 = sapply(cl2, function(x){
   return(ifelse(x=='factor','-1',''))
 })
-f_cat =  paste(colnames(temp),ps,collapse = " + ",sep = '')
-fla_cat = as.formula(paste(c('~ ',f_tot),collapse = '',sep=''))
+f_cat =  paste(colnames(temp_data2),ps2,collapse = " + ",sep = '')
+fla_cat = as.formula(paste(c('~ ',f_cat),collapse = '',sep=''))
 #>>>>>>>>>>>>>
 X_cat = model.matrix(fla_cat,data=total_data)
 ```
@@ -288,6 +289,63 @@ We Can see from this that despite the fact that we dropped 19 out of 74 variable
 Now that we've succeeded in a relatively simple problem, let's try something more complex. If you read the data documentation you'll find the definitions for the different skip categories
 ```{r,echo=FALSE}
 knitr::include_graphics('skip.png')
+```
+Given that these all give information about the same thing we can more or less consider these as dummy variables for a single categorical column with 5 levels. If we look at the possible combinations of these 4 variables we see that there are 6 categories but one of them has only one observation. 
+```{r}
+total_data %>% group_by(skip_1,skip_2,skip_3,not_skipped) %>% count()
+```
+If we consider the possibility that this single observation is an error it would support my assertion that these are analogs to dummy variables. Our next task will be to make model to predict this 5 level categorical. Thus, the first task is to create a new column to represent that.
+
+```{r}
+## First drop the error column 
+dim(total_data)
+total_data2 = total_data %>% filter(!(skip_2==TRUE & total_data$skip_3==FALSE))
+dim(total_data2)
+total_data2 %>% group_by(skip_1,skip_2,skip_3,not_skipped) %>% count()
+listen_time = rep('',length(total_data2$skip_1))
+for (i in 1:length(listen_time)) {
+  if(total_data2$not_skipped[i]){
+    listen_time[i] = 'Full'
+  }else if(total_data2$skip_1[i]){
+    listen_time[i] = 'Short'
+  }else if(total_data2$skip_2[i]){
+    listen_time[i] = 'Med'
+  }else if(total_data2$skip_3[i]){
+    listen_time[i] = 'Long'
+  }else{
+    listen_time[i] = 'Unknown'
+  }
+}
+total_data2$listen_time = listen_time
+
+total_data2 %>% group_by(skip_1,skip_2,skip_3,not_skipped,listen_time) %>% count()
+```
+With this accomplished let's go ahead and test our previous model but with listen_time as the predicted variable
+
+```{r}
+temp_data_listen = subset(total_data2,select=-c(not_skipped,skip_1,skip_2,skip_3,session_id,track_id_clean,date,listen_time))
+
+cl_listen = sapply(temp_data_listen, class)
+ps_listen = sapply(cl_listen, function(x){
+  return(ifelse(x=='factor','-1',''))
+})
+f_listen =  paste(colnames(temp_data_listen),ps_listen,collapse = " + ",sep = '')
+fla_listen = as.formula(paste(c('~ ',f_listen),collapse = '',sep=''))
+#>>>>>>>>>>>>>
+X_listen = model.matrix(fla_listen,data=total_data2)
+```
+```{r}
+indx_listen = sample(length(listen_time),length(listen_time)%/%10)
+X_listen_train = X_listen[-indx_listen,]
+X_listen_test = X_listen[indx_listen,]
+Y_listen_train = total_data2$listen_time[-indx_listen]
+Y_listen_test = total_data2$listen_time[indx_listen]
+
+lasso_listen = cv.glmnet(X_listen_train,Y_listen_train,family='multinomial',alpha=1)
+```
+```{r}
+listen_conf = confusion.glmnet(lasso_listen,newx = X_listen_test,newy=Y_listen_test)
+listen_conf
 ```
 
 
