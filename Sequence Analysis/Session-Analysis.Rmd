@@ -2,62 +2,106 @@
 title: "Session_Analysis of Spotify Data"
 author: "Becca Stein and Rice Tyler"
 date: "12/11/2019"
-output: html_document:
-  theme: readable
+output: html_document
 ---
-
-The Spotify dataset is intended to train a model to predict song skips. However, the data on users' *sequence* of listening behavior, with song skips being only one channel of the sequence, is interesting to explore in itself, and may also lead to insights about the processes driving song skipping behavior (cite paper on sequential music listening behavior). Using sequential analysis and Mixture Hidden Markov Models, we can find similarities between listening sessions in their entirety, cluster them into groups, and examine those groups for shared characteristics (cite paper on sequence clustering with Markov Models). We can define time series data as sets of sequences in R using the TraMineR package, and fit HMMs to sequence data using the seqHMM package. 
+Here we explore another way to appraoch and understand our data: as a set of multi-channel timne-series.
+Previously, we approached the data set as a tool for solving a prediction problem. However, the data on users' *sequence* of listening behavior, with song skips being only one channel of the sequence, is interesting to explore in itself, and may also lead to insights about the processes driving song skipping behavior (cite paper on sequential music listening behavior). Using sequential analysis and Mixture Hidden Markov Models, we can find similarities between listening sessions in their entirety, cluster them into groups, and examine those groups for shared characteristics (cite paper on sequence clustering with Markov Models). We can define time series data as sets of sequences in R using the TraMineR package, and fit HMMs to sequence data using the seqHMM package. 
 
 TraMineR, seqHMM, and indeed sequence analysis in general, were designed for and have been primarily applied to sociological data such as life courses (marital status, residential status, etc.). (cite package docs). The assumption of the sociological domain is built into the packages to an extent: TraMineR requires start and end points to be specified for each sequence step, and accepts ages or calendar years as values (cite package docs). Thus, adapting it to listening session data required a bit of fudging, i.e., each session step is given an "age-range" from its position in the sequence to the next position in the sequence. For example, song 1 has a start point of 1 and an endpoint of 2. 
+
+Additional pre-processing:
+The dataset has 4 boolean values corresponding to whether a track was played very briefly, briefly, most of the way through, or all the way through. Initially, we assumed that these 4 attributes were a one-hot encoding of how long a song was played before being skipped. We later noticed that for some observations, more than one value would be true, so apparently a song was both played only briefly and played most of the way through. Several thousand observations has every value set to false. We discarded these observations as we were unsure if they were erroneous or otherwise how to interpret them. For observations with multiple true skip values, we used the longest. This effectively condensed all 4 skip variables into a boolean, since only 15 out of one million observations had skip_2 true and skip_3 false, while 0 had skip_1 true and skip_3 false. We were also unsure how to interpret, and consequently discarded, observations where a track was skipped but ended because of the track finishing. We discarded context switch booleans, as they were encoded in the context variable sequences. We converted dates to days of the week and times to time categories: morning, afternoon, evening, late night, middle of the night. 
 
 Various researchers have studied sequential patterns in music session listening behavior using other methods (cite music sequence paper), but to the best of our knowledge this is the first application of Hidden Markov Models and the associated R packages to the problem. 
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
  # code for converting data to SPELL format for TraMineR and seqHMM #
-# play_data <- read.csv("~/Documents/MSDS/Data Mining/Spotify Track Skips//training_set/spotify-data-train.csv", nrows = 400000,stringsAsFactors = FALSE)
+# play_data <- read.csv("~/Documents/MSDS/Data Mining/Spotify Track Skips//training_set/spotify-data-train.csv", nrows = 1000000,stringsAsFactors = FALSE)
 # track_data <- read.csv("~/Documents/MSDS/Data Mining/Spotify Track Skips/track_features/tf-1.csv") %>% bind_rows(read.csv("~/Documents/MSDS/Data Mining/Spotify Track Skips/track_features/tf-2.csv"))
-# 
+# # 
+# combined_data <- left_join(play_data,track_data,by = c("track_id_clean" = "track_id"))
 # score <- function(x) { # Convert continuous vars to discrete "scores" for sequence modeling
-#           return(factor(round(x *10)))
+#            return(factor(round(x *10)))
 # }
-# Sequence_Train <- filter(Train, session_length == 20) %>% select(session_id, session_position, skip_1, skip_2, skip_3, context_type, hist_user_behavior_n_seekfwd, hist_user_behavior_n_seekback, hist_user_behavior_is_shuffle, hist_user_behavior_reason_end, hist_user_behavior_reason_start, us_popularity_estimate, release_year, beat_strength, bounciness, danceability, dyn_range_mean, energy, flatness, instrumentalness, liveness, loudness, mechanism, organism, speechiness, tempo, valence, date) %>% slice(1:400000)
+# # convert strings to booleans
+# combined_data[combined_data == "true"] <- 1
+# combined_data[combined_data == "false"] <- 0
+# #convert categorical integers to factors for automated dummy-coding
+# combined_data$context_type <- factor(combined_data$context_type)
+# combined_data$hist_user_behavior_reason_start <- factor(combined_data$hist_user_behavior_reason_start)
+# combined_data$hist_user_behavior_reason_end <- factor(combined_data$hist_user_behavior_reason_end)
+# combined_data$key <- factor(combined_data$key)
+# combined_data$time_signature <- factor(combined_data$time_signature)
+# combined_data$mode <- factor(combined_data$mode)
+# #convert dates to date-time datatypes 
+# combined_data$date <- ymd(combined_data$date)
+# combined_data$date <- update(combined_data$date, hour = combined_data$hour_of_day)
+# combined_data <- combined_data[-16]
+# #standardize continuous numerical variables
+# combined_data$skip_1 <- factor(combined_data$skip_1)
+# combined_data$skip_2 <- factor(combined_data$skip_2)
+# combined_data$skip_3 <- factor(combined_data$skip_3)
+# combined_data$not_skipped <- factor(combined_data$not_skipped)
+# combined_data$hist_user_behavior_is_shuffle <- factor(combined_data$hist_user_behavior_is_shuffle)
+# combined_data$context_switch <- factor(combined_data$context_switch)
+# combined_data$no_pause_before_play <- factor(combined_data$no_pause_before_play)
+# combined_data$short_pause_before_play <- factor(combined_data$short_pause_before_play)
+# combined_data$premium <- factor(combined_data$premium)
+# combined_data <- combined_data[-12]
+# combined_data <- rapply(combined_data,scale,c("numeric"),how="replace")
+# # separate out normalized play and track data; separate out response variable (skipped T/F)
+# Train <- combined_data
+# check <- filter(Train, (skip_1 == 0 & skip_2 == 0 & skip_3 == 0 & not_skipped ==0))
+# check2 <- filter(Train, not_skipped == 0 & hist_user_behavior_reason_end == "trackdone")
+# clean <- anti_join(Train,check, by = "session_id") %>% anti_join(check2, by = "session_id")
+# 
+# clean <- mutate(clean,day = weekdays(date), time = ifelse(6 <= hour(date) & hour(date)< 11, "morning", ifelse(hour(date) <= 16, "afternoon", ifelse(hour(date)<=20, "evening", ifelse(hour(date) <= 0, "night", "latenight")))))
+# 
+# Sequence_Train <- filter(clean, session_length == 20) %>% select(session_id, session_position, skip_1, skip_2, skip_3, context_type, hist_user_behavior_n_seekfwd, hist_user_behavior_n_seekback, hist_user_behavior_is_shuffle, hist_user_behavior_reason_end, hist_user_behavior_reason_start, us_popularity_estimate, release_year, beat_strength, bounciness, danceability, dyn_range_mean, energy, flatness, instrumentalness, liveness, loudness, mechanism, organism, speechiness, tempo, valence, day,time, premium, no_pause_before_play,us_popularity_estimate) %>% slice(1:400000)
 # 
 # Sequence_Train$release_year <- ifelse(Sequence_Train$release_year%%10 == 0, Sequence_Train$release_year, Sequence_Train$release_year - (Sequence_Train$release_year%%10)) #convert release years to decades
 # Sequence_Train$release_year <- factor(Sequence_Train$release_year)
 # Sequence_Train <- mutate_if(Sequence_Train, is.numeric, funs(score(.)))
-# Sequence_Train$session_position <- as.integer(Sequence_Train$session_position) 
-# Sequence_Train <- mutate(Sequence_Train, play_time = (ifelse(skip_1 == 1, "short", ifelse(skip_2 == 1, "med",
-#                                                             ifelse(skip_3 == 1,"long", "full")))))
+# Sequence_Train$session_position <- as.integer(Sequence_Train$session_position)
+# Sequence_Train <- mutate(Sequence_Train, skip = (ifelse(skip_1 == 0 & skip_2 ==0 & skip_3 ==0, "no_skip", hist_user_behavior_reason_end))) 
 # Sequence_Train$end <- Sequence_Train$session_position + 1
-# play_time_seq <- seqformat(Sequence_Train, from = "SPELL", to = "STS", id = 1, begin = 2, end = 2, status = 29)
-# context_seq <- seqformat(Sequence_Train, from = "SPELL", to = "STS", id = 1, begin = 2, end = 30, status = 6, process = F)
-# year_seq <- seqformat(Sequence_Train, from = "SPELL", to = "STS", id = 1, begin = 2, end = 30, status = 13, process = F)
-# dance_seq <- seqformat(Sequence_Train, from = "SPELL", to = "STS", id = 1, begin = 2, end = 30, status = 16, process = F)
-# beat_seq <- seqformat(Sequence_Train, from = "SPELL", to = "STS", id = 1, begin = 2, end = 30, status = 14, process = F)
-# bounce_seq <- seqformat(Sequence_Train, from = "SPELL", to = "STS", id = 1, begin = 2, end = 30, status = 15, process = F)
-# energy_seq <- seqformat(Sequence_Train, from = "SPELL", to = "STS", id = 1, begin = 2, end = 30, status = 18, process = F)
-# flat_seq <- seqformat(Sequence_Train, from = "SPELL", to = "STS", id = 1, begin = 2, end = 30, status = 19, process = F)
-# inst_seq <- seqformat(Sequence_Train, from = "SPELL", to = "STS", id = 1, begin = 2, end = 30, status = 20, process = F)
-# live_seq <- seqformat(Sequence_Train, from = "SPELL", to = "STS", id = 1, begin = 2, end = 30, status = 21, process = F)
-# loud_seq <- seqformat(Sequence_Train, from = "SPELL", to = "STS", id = 1, begin = 2, end = 30, status = 22, process = F)
-# speech_seq <- seqformat(Sequence_Train, from = "SPELL", to = "STS", id = 1, begin = 2, end = 30, status = 25, process = F)
-# temp_seq <- seqformat(Sequence_Train, from = "SPELL", to = "STS", id = 1, begin = 2, end = 30, status = 26, process = F)
-# val_seq <- seqformat(Sequence_Train, from = "SPELL", to = "STS", id = 1, begin = 2, end = 30, status = 27, process = F)
-# seekfwd_seq <- seqformat(Sequence_Train, from = "SPELL", to = "STS", id = 1, begin = 2, end = 30, status = 7, process = F)
-# seekbk_seq <- seqformat(Sequence_Train, from = "SPELL", to = "STS", id = 1, begin = 2, end = 30, status = 8, process = F)
-# start_seq <- seqformat(Sequence_Train, from = "SPELL", to = "STS", id = 1, begin = 2, end = 30, status = 11, process = F)
-# end_seq <- seqformat(Sequence_Train, from = "SPELL", to = "STS", id = 1, begin = 2, end = 30, status = 10, process = F)
+# end = "end"
+#sequence formatting
+# skip_seq <- seqformat(Sequence_Train, from = "SPELL", to = "STS", id = 1, begin = 2, end = end, status = 'skip', process = F)
+# context_seq <- seqformat(Sequence_Train, from = "SPELL", to = "STS", id = 1, begin = 2, end = end, status = 'context_type', process = F)
+# year_seq <- seqformat(Sequence_Train, from = "SPELL", to = "STS", id = 1, begin = 2, end = end, status = 'release_year', process = F)
+# dance_seq <- seqformat(Sequence_Train, from = "SPELL", to = "STS", id = 1, begin = 2, end = end, status = 'danceability', process = F)
+# beat_seq <- seqformat(Sequence_Train, from = "SPELL", to = "STS", id = 1, begin = 2, end = end, status = 'beat_strength', process = F)
+# bounce_seq <- seqformat(Sequence_Train, from = "SPELL", to = "STS", id = 1, begin = 2, end = end, status = 'bounciness', process = F)
+# energy_seq <- seqformat(Sequence_Train, from = "SPELL", to = "STS", id = 1, begin = 2, end = end, status = 'energy', process = F)
+# flat_seq <- seqformat(Sequence_Train, from = "SPELL", to = "STS", id = 1, begin = 2, end = end, status = 'flatness', process = F)
+# inst_seq <- seqformat(Sequence_Train, from = "SPELL", to = "STS", id = 1, begin = 2, end = end, status = 'instrumentalness', process = F)
+# live_seq <- seqformat(Sequence_Train, from = "SPELL", to = "STS", id = 1, begin = 2, end = end, status = 'liveness', process = F)
+# loud_seq <- seqformat(Sequence_Train, from = "SPELL", to = "STS", id = 1, begin = 2, end = end, status = 'loudness', process = F)
+# speech_seq <- seqformat(Sequence_Train, from = "SPELL", to = "STS", id = 1, begin = 2, end = end, status = 'speechiness', process = F)
+# temp_seq <- seqformat(Sequence_Train, from = "SPELL", to = "STS", id = 1, begin = 2, end = end, status = 'tempo', process = F)
+# val_seq <- seqformat(Sequence_Train, from = "SPELL", to = "STS", id = 1, begin = 2, end = end, status = 'valence', process = F)
+# seekfwd_seq <- seqformat(Sequence_Train, from = "SPELL", to = "STS", id = 1, begin = 2, end = end, status = 'hist_user_behavior_n_seekfwd', process = F)
+# seekbk_seq <- seqformat(Sequence_Train, from = "SPELL", to = "STS", id = 1, begin = 2, end = end, status = 'hist_user_behavior_n_seekback', process = F)
+# start_seq <- seqformat(Sequence_Train, from = "SPELL", to = "STS", id = 1, begin = 2, end = end, status = 'hist_user_behavior_reason_end', process = F)
+# pause_seq <- seqformat(Sequence_Train, from = "SPELL", to = "STS", id = 1, begin = 2, end = end, status = 'no_pause_before_play', process = F)
+# pop_seq <- seqformat(Sequence_Train, from = "SPELL", to = "STS", id = 1, begin = 2, end = end, status = 'us_popularity_estimate', process = F)
+# shuffle_seq <- seqformat(Sequence_Train, from = "SPELL", to = "STS", id = 1, begin = 2, end = end, status = 'hist_user_behavior_is_shuffle', process = F)
 # 
-# sequences <- list(play_time_seq, context_seq, year_seq, dance_seq, beat_seq, bounce_seq, energy_seq, flat_seq, inst_seq,
-#                   live_seq, loud_seq, speech_seq, temp_seq, val_seq, seekfwd_seq, seekbk_seq, start_seq, end_seq)
+# sequences <- list(skip_seq, context_seq, year_seq, dance_seq, beat_seq, bounce_seq, energy_seq, flat_seq, inst_seq,
+#                   live_seq, loud_seq, speech_seq, temp_seq, val_seq, seekfwd_seq, seekbk_seq, start_seq, pause_seq, pop_seq, shuffle_seq)
 # sequence_names <-  c("skip", "context", "year", "dance", "beat", "bounce", "energy", "flat", "inst", "live","loud", "speech","temp",
-#                      "val", "seekfwd", "seekbk", "start", "end")
-# dates <- distinct(Sequence_Train,session_id,.keep_all = T) %>% select(session_id, date)
-# for (s in 1:18) {
+#                      "val", "seekfwd", "seekbk", "start", "pause", "pop", "shuffle")
+# days <- distinct(Sequence_Train,session_id,.keep_all = T) %>% select(session_id, day)
+# times <- distinct(Sequence_Train,session_id,.keep_all = T) %>% select(session_id, time)
+# premium <- distinct(Sequence_Train,session_id,.keep_all = T) %>% select(session_id, premium)
+# 
+# trial <- rownames_to_column(pop_seq,var = "index") %>% left_join(days, by = c("index" = "session_id"))
+# for (s in 1:19) {
 #   file_name <- str_c(sequence_names[s], "sequences.csv", sep = "_")
 #   sequences[[s]] <- rownames_to_column(sequences[[s]],var = "index")
-#   s <- left_join(sequences[[s]], dates, by = c("index" = "session_id"))[-22]
+#   s <- left_join(sequences[[s]], days, by = c("index" = "session_id"))[-22] %>% left_join(times, by = c("index" = "session_id")) %>% left_join(premium, by = c("index" = "session_id"))
 #   write.csv(s,file_name)
 # }
 
@@ -66,6 +110,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r, include=FALSE}
 library(tidyr)
+library(plyr)
 library(seqHMM)
 library(TraMineR)
 library(RColorBrewer)
@@ -87,35 +132,36 @@ val <- read.csv("val_sequences.csv", row.names = 1)
 seekfwd <- read.csv("seekfwd_sequences.csv", row.names = 1)
 seekbk <- read.csv("seekbk_sequences.csv", row.names = 1)
 start <- read.csv("start_sequences.csv", row.names = 1)
-end <- read.csv("end_sequences.csv", row.names = 1)
+pop <- read.csv("pop_sequences.csv", row.names = 1)
+pause <- read.csv("pause_sequences.csv", row.names = 1)
 ```
 
-In total, we created 18 sequence objects, each representing one channel of user behavior: e.g. song dance-ability and tempo; song release decade, etc. Below is the code used to create one sequence object for the ways users ended songs:
+In total, we created 18 sequence objects, each representing one channel of user behavior: e.g. song dance-ability and tempo; song release decade, etc. Below is the code used to create one sequence object for the release decade of songs:
+```{r}
+year <- read.csv("year_sequences.csv", row.names = 1)
+decade_sequence <- seqdef(year, var = 2:21, cpal = sequential_hcl(7,"SunsetDark"))
+```
 
 Note that end_sequences.csv was pre-processed using the seqformat() function to convert the data from SPELL format to the STS format that TraMineR expects. SPELL format uses multiple rows for every obsservation, where each row is a step in that observation's sequence. STS format has one row per observation and represents each step as a column attribute. TraMineR and seqHMM are also specific to discrete state sequences. Continuous variables representing acoustic track features, such as "beat-strength", "energy", and "dance-ability" were converted to discrete scores by first normalizing them, then multiplying by 10 and rounding to the nearest integer. Finally, we converted release years to release decades to reduce the number of states and enhance visual interpretability of the plots. 
 
-```{r}
-end <- read.csv("end_sequences.csv", row.names = 1)
-end_sequence <- seqdef(end, var = 2:21)
-```
-
 
 ```{r, include=FALSE}
-skip_sequence <- seqdef(skip, var = 2:21, alphabet = c("short", "med", "long", "full"), cpal = c("firebrick2","darkorange1", "gold1", "forestgreen"))
-decade_sequence <- seqdef(year, var = 2:21, cpal = sequential_hcl(7,"SunsetDark"))
+skip_sequence <- seqdef(skip, var = 2:21, states = c("appload","backbtn","clickrow","endplay","fwdbtn","logout","remote","no skip"),alphabet = c("1", "2", "3", "4", "5", "6", "7","no_skip"), cpal = diverge_hcl(8,"Tropic"))
+context_sequence <- seqdef(context, var = 2:21)
 dance_sequence <- seqdef(dance, var = 2:21, cpal = diverge_hcl(61,"Blue-Red"))
-beat_sequence <- seqdef(beat, var = 2:21, cpal = diverge_hcl(62,"Blue-Red"))
+beat_sequence <- seqdef(beat, var = 2:21, cpal = diverge_hcl(63,"Blue-Red"))
 bounce_sequence <- seqdef(bounce, var = 2:21, cpal = diverge_hcl(55,"Blue-Red"))
-start_sequence <- seqdef(start, var = 2:21, cpal = colorpalette[[10]])
+start_sequence <- seqdef(start, var = 2:21, cpal = colorpalette[[8]])
 energy_sequence <- seqdef(energy, var = 2:21, cpal =  diverge_hcl(56,"Blue-Red"))
-#flat_sequence <- seqdef(flat, var = 2:21, cpal =  diverge_hcl(109,"Blue-Red"))
-inst_sequence <- seqdef(inst, var = 2:21, cpal =  diverge_hcl(72,"Blue-Red"))
+flat_sequence <- seqdef(flat, var = 2:21, cpal =  diverge_hcl(212,"Blue-Red"))
+inst_sequence <- seqdef(inst, var = 2:21, cpal =  diverge_hcl(71,"Blue-Red"))
 live_sequence <- seqdef(live, var = 2:21, cpal =  diverge_hcl(68,"Blue-Red"))
-#loud_sequence <- seqdef(loud, var = 2:21, cpal =  diverge_hcl(196,"Blue-Red"))
-seekbk_sequence <- seqdef(seekbk, var = 2:21, cpal = sequential_hcl(30,"SunsetDark"))
-seekfwd_sequence <- seqdef(seekfwd, var = 2:21, cpal = sequential_hcl(30,"SunsetDark"))
+loud_sequence <- seqdef(loud, var = 2:21, cpal =  diverge_hcl(168,"Blue-Red"))
+pop_sequence <- seqdef(pop, var = 2:21, cpal =  diverge_hcl(111,"Blue-Red"))
+seekbk_sequence <- seqdef(seekbk, var = 2:21, cpal = sequential_hcl(31,"SunsetDark"))
+seekfwd_sequence <- seqdef(seekfwd, var = 2:21, cpal = sequential_hcl(20,"SunsetDark"))
 speech_sequence <- seqdef(speech, var = 2:21, cpal =  diverge_hcl(73,"Blue-Red"))
-temp_sequence <- seqdef(temp, var = 2:21, cpal =  diverge_hcl(66,"Blue-Red"))
+temp_sequence <- seqdef(temp, var = 2:21, cpal =  diverge_hcl(65,"Blue-Red"))
 val_sequence <- seqdef(val, var = 2:21, cpal =  diverge_hcl(45,"Blue-Red"))
 ```
 
@@ -124,19 +170,19 @@ TraMineR sequence objects have built-in plotting methods. We can plot the distri
 Below are plots of 200 sequences for a selection of state channels. 
 ```{r, fig.height = 7, fig.width=5}
 # Plots
-plot_ub1 <- ssp(list(skip_sequence[200:400,], start_sequence[200:400,],end_sequence[200:400,]),
+plot_ub1 <- ssp(list(skip_sequence[200:400,], start_sequence[200:400,]),
 sortv = "from.start", sort.channel = 1, type = "I",
-ylab = c("Song Play Time", "Song Start", "Song End"),
+ylab = c("Skip", "Song Start"),
 xtlab = 1:20, xlab = "Session Position", title = "200 User Behavior Sequences",
-title.n = FALSE, legend.prop = 0.4, ylab.pos = c(2, 2,2), cex.legend = .8,
-ncol.legend = c(1, 2,2))
+title.n = FALSE, legend.prop = 0.4, ylab.pos = c(2, 2), cex.legend = .8,
+ncol.legend = c(1, 2))
 
-plot_ub2 <- ssp(list(skip_sequence[200:400,], start_sequence[200:400,],end_sequence[200:400,]),
+plot_ub2 <- ssp(list(skip_sequence[200:400,], start_sequence[200:400,]),
 sortv = "from.start", sort.channel = 1, type = "d",
-ylab = c("Song Play Time", "Song Start", "Song End"),
-xtlab = 1:20, xlab = "Session Position", title = "User Behavior Distributions",
-title.n = FALSE, legend.prop = 0.4, ylab.pos = c(2, 2,2), cex.legend = .8,
-ncol.legend = c(1, 2,2), border = NA)
+ylab = c("Skip", "Song Start"),
+xtlab = 1:20, xlab = "Session Position", title = "200 User Behavior Sequences",
+title.n = FALSE, legend.prop = 0.4, ylab.pos = c(2, 2), cex.legend = .8,
+ncol.legend = c(1, 2), border = NA)
 
 plot_track1 <- ssp(list(decade_sequence[200:400,], dance_sequence[200:400,],beat_sequence[200:400,]),
 sortv = "from.start", sort.channel = 2, type = "I",
@@ -174,10 +220,31 @@ gridplot(seq_plots[3:5], nrow = 2, ncol =2, with.legend = F)
 
 ```
 
-
+Here we visualize user skipping behavior by time of day: 
 ```{r}
-
+#gotta figure out why format is so bad
+ssplot(list(skip_sequence[200:400,], start_sequence[200:400,]), group = skip$time[200:400],
+sortv = "from.start", sort.channel = 1, type = "I",
+ylab = c("Skip", "Song Start"),
+xtlab = 1:20, xlab = "Session Position", title = "200 User Behavior Sequences",
+title.n = FALSE, legend.prop = 0.4, ylab.pos = c(2, 2), cex.legend = .8, with.legend = "right",ncol.legend = c(1, 2))
 ```
 
+And by day of the week:
+```{r}
+ssplot(skip_sequence, group = skip$day,
+sortv = "from.start", sort.channel = 1, type = "d",
+ylab = c("Skip"),
+xtlab = 1:20, xlab = "Session Position", title = "User Behavior Sequences by Day of the Week",
+title.n = FALSE, legend.prop = 0.4, ylab.pos = c(2), cex.legend = .8, with.legend = "right",ncol.legend = c(1, 2), border = NA, space = 0)
+```
+
+Hidden Markov Models assume that observed sequential data is generated by an unobserved sequential process which obeys the Markov assumption. As with clustering, optimizing an HMM is dependent on a manually specified number of states. Below we use the seqHMM package to fit an HMM to selected channels of our data. 
+
+*Note: the fit_model function can take quite awhile to run. 
+```{r}
+skip_model <- build_hmm(observations = skip_sequence, n_states = 4)
+skip_fit <- fit_model(skip_model)
+```
 
 Future projects could include expansions of TraMineR and seqHMM to acoomodate continuous data and generalize more ready to domains outside of sociology. 
