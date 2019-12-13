@@ -1,7 +1,7 @@
 ---
-title: "Session_Analysis of Spotify Data"
+title: "Analyzng Spotify Sessions as Time-Series"
 author: "Becca Stein and Rice Tyler"
-date: "12/11/2019"
+date: "12/13/2019"
 output: html_document
 ---
 Here we explore another way to appraoch and understand our data: as a set of multi-channel timne-series.
@@ -137,7 +137,7 @@ pause <- read.csv("pause_sequences.csv", row.names = 1)
 ```
 
 In total, we created 18 sequence objects, each representing one channel of user behavior: e.g. song dance-ability and tempo; song release decade, etc. Below is the code used to create one sequence object for the release decade of songs:
-```{r}
+```{r, results = "hide", message=FALSE}
 year <- read.csv("year_sequences.csv", row.names = 1)
 decade_sequence <- seqdef(year, var = 2:21, cpal = sequential_hcl(7,"SunsetDark"))
 ```
@@ -168,7 +168,7 @@ val_sequence <- seqdef(val, var = 2:21, cpal =  diverge_hcl(45,"Blue-Red"))
 TraMineR sequence objects have built-in plotting methods. We can plot the distribution of states in each sequence step, a selected sample of sequences, or the frequency of the most common sequency. The frequency plots have limited value for long sequences with many possible states, as the high variation means very few sequences will be identical, so the most common sequences may still be quite rare. 
 
 Below are plots of 200 sequences for a selection of state channels. 
-```{r, fig.height = 7, fig.width=5}
+```{r, fig.height = 14, fig.width=8, echo = FALSE, message=FALSE}
 # Plots
 plot_ub1 <- ssp(list(skip_sequence[200:400,], start_sequence[200:400,]),
 sortv = "from.start", sort.channel = 1, type = "I",
@@ -180,9 +180,23 @@ ncol.legend = c(1, 2))
 plot_ub2 <- ssp(list(skip_sequence[200:400,], start_sequence[200:400,]),
 sortv = "from.start", sort.channel = 1, type = "d",
 ylab = c("Skip", "Song Start"),
-xtlab = 1:20, xlab = "Session Position", title = "200 User Behavior Sequences",
+xtlab = 1:20, xlab = "Session Position", title = "User Behavior Distributions",
 title.n = FALSE, legend.prop = 0.4, ylab.pos = c(2, 2), cex.legend = .8,
 ncol.legend = c(1, 2), border = NA)
+
+plot_ub3 <- ssp(list(skip_sequence[200:400,], context_sequence[200:400,]),
+sortv = "from.start", sort.channel = 1, type = "I",
+ylab = c("Skip", "Context"),
+xtlab = 1:20, xlab = "Session Position", title = "Song Context vs. Skipping",
+title.n = FALSE, legend.prop = 0.4, ylab.pos = c(2, 2), cex.legend = .8,
+ncol.legend = c(1, 1), border = NA)
+
+plot_ub4 <- ssp(list(skip_sequence[200:400,], context_sequence[200:400,]),
+sortv = "from.start", sort.channel = 2, type = "I",
+ylab = c("Skip", "Context"),
+xtlab = 1:20, xlab = "Session Position", title = "Song Context vs. Skipping Sorted by Context",
+title.n = FALSE, legend.prop = 0.4, ylab.pos = c(2, 2), cex.legend = .8,
+ncol.legend = c(1, 1), border = NA)
 
 plot_track1 <- ssp(list(decade_sequence[200:400,], dance_sequence[200:400,],beat_sequence[200:400,]),
 sortv = "from.start", sort.channel = 2, type = "I",
@@ -212,37 +226,40 @@ xtlab = 1:20, xlab = "Session Position", title = "Track Feature Distributions",
 title.n = FALSE, legend.prop = .1, ylab.pos = c(2, 1,2,1,2,1,2,1), cex.legend = .1,
 ncol.legend = c(6,6,6,6,6,6,6,6),border = NA)
 class(plot_ub1)
-seq_plots <- list(plot_ub1,plot_ub2, plot_track1, plot_track2, plot_track3, plot_track4)
+seq_plots <- list(plot_ub1,plot_ub2, plot_ub3,plot_ub4,plot_track1, plot_track2, plot_track3, plot_track4)
 
-gridplot(seq_plots[1:2], byrow = T,with.legend = "FALSE",legend.pos = "right")
+gridplot(seq_plots[1:4], nrow =4, ncol = 1,with.legend = "FALSE",legend.pos = "right")
 
-gridplot(seq_plots[3:5], nrow = 2, ncol =2, with.legend = F)
+gridplot(seq_plots[5:7], nrow = 2, ncol =2, with.legend = F)
 
 ```
 
 Here we visualize user skipping behavior by time of day: 
 ```{r}
-#gotta figure out why format is so bad
-ssplot(list(skip_sequence[200:400,], start_sequence[200:400,]), group = skip$time[200:400],
-sortv = "from.start", sort.channel = 1, type = "I",
-ylab = c("Skip", "Song Start"),
-xtlab = 1:20, xlab = "Session Position", title = "200 User Behavior Sequences",
-title.n = FALSE, legend.prop = 0.4, ylab.pos = c(2, 2), cex.legend = .8, with.legend = "right",ncol.legend = c(1, 2))
+# plot.new()
+# #gotta figure out why format is so bad
+# ssplot(list(skip_sequence[200:400,], start_sequence[200:400,]), group = skip$time[200:400],
+# sortv = "from.start", sort.channel = 1, type = "I",
+# ylab = c("Skip", "Song Start"),
+# xtlab = 1:20, xlab = "Session Position", title = "200 User Behavior Sequences",
+# title.n = FALSE, legend.prop = 0.4, ylab.pos = c(2, 2), cex.legend = .8, with.legend = "right",ncol.legend = c(1, 2))
 ```
 
 And by day of the week:
 ```{r}
-ssplot(skip_sequence, group = skip$day,
-sortv = "from.start", sort.channel = 1, type = "d",
-ylab = c("Skip"),
-xtlab = 1:20, xlab = "Session Position", title = "User Behavior Sequences by Day of the Week",
-title.n = FALSE, legend.prop = 0.4, ylab.pos = c(2), cex.legend = .8, with.legend = "right",ncol.legend = c(1, 2), border = NA, space = 0)
+# ssplot(skip_sequence, group = skip$day,
+# sortv = "from.start", sort.channel = 1, type = "d",
+# ylab = c("Skip"),
+# xtlab = 1:20, xlab = "Session Position", title = "User Behavior Sequences by Day of the Week",
+# title.n = FALSE, legend.prop = 0.4, ylab.pos = c(2), cex.legend = .8, with.legend = "right",ncol.legend = c(1, 2), border = NA, space = 0)
+
+
 ```
 
 Hidden Markov Models assume that observed sequential data is generated by an unobserved sequential process which obeys the Markov assumption. As with clustering, optimizing an HMM is dependent on a manually specified number of states. Below we use the seqHMM package to fit an HMM to selected channels of our data. 
 
 *Note: the fit_model function can take quite awhile to run. 
-```{r}
+```{r, eval = FALSE}
 skip_model <- build_hmm(observations = skip_sequence, n_states = 4)
 skip_fit <- fit_model(skip_model)
 ```
